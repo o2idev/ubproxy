@@ -12,6 +12,10 @@ Eliminates repetitive editing of system files prone to manual errors.
 * `/etc/apt/apt.conf`
 * `gsettings list-recursively org.gnome.system.proxy`
 
+with this it covers all the system places mentioned e.g. here:
+
+* [AskUbuntu: How do I set system-wide proxy servers in Xubuntu, Lubuntu or Ubuntu Studio?](https://askubuntu.com/a/151047)
+
 # GUI options
 
 ![Screenshot](https://github.com/o2idev/ubproxy/blob/master/2020-07-28%2Cscreenshot)
