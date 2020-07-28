@@ -14,6 +14,8 @@ Eliminates repetitive editing of system files prone to manual errors.
 
 # GUI options
 
+![Screenshot](https://github.com/o2idev/ubproxy/blob/master/2020-07-28%2Cscreenshot)
+
 * `host`: for all HTTP, HTTPS, FTP connections
 * `port`: for all the above
 * `httpsProtocol`: default: `http` ; used for env var setup above ; maybe sometimes it must be `https`
