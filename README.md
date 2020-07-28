@@ -1,4 +1,4 @@
-## ubproxy
+# ubproxy
 
 (Ongoing development of the former https://code.google.com/p/ubproxy/)
 
