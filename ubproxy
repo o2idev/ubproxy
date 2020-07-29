@@ -31,13 +31,30 @@
 
 import gtk
 import os
+import subprocess
 import re
 import sys
 from datetime import datetime
+from pwd import getpwnam
 
 filenames = ["/etc/bash.bashrc", "/etc/environment"]
 filename2 = "/etc/apt/apt.conf"
 logs = "/var/log/proxychangerlog"
+
+gsettingsUser = 'user'
+gsettingsResetMode = 'none'
+
+
+## https://askubuntu.com/a/484752
+def prepare_gsettings():
+    #pid = subprocess.check_output(["pgrep", "gnome-session"]).decode("utf-8").strip(A)
+    pid = subprocess.check_output(["pgrep", "xfce4-session"]).decode("utf-8").strip()
+    #cmd = "grep -z DBUS_SESSION_BUS_ADDRESS /proc/"+pid+"/environ|cut -d= -f2-"
+    cmd = "grep -z DBUS_SESSION_BUS_ADDRESS /proc/"+pid+"/environ  |  cut -d= -f2-  |  sed -r 's/(.+)/DBUS_SESSION_BUS_ADDRESS=\\\\1/'"
+    #print ("PATH: < %s >" % (os.environ["PATH"]))
+    #print ("DBUS_SESSION_BUS_ADDRESS: < %s >" % (os.environ["DBUS_SESSION_BUS_ADDRESS"]))
+    os.environ["DBUS_SESSION_BUS_ADDRESS"] = subprocess.check_output(['/bin/bash', '-c', cmd]).decode("utf-8").strip().replace("\0", "")
+    #os.environ["DBUS_SESSION_BUS_ADDRESS"] = 'unix:abstract=/tmp/dbus-3LpGWPt0WX,guid=c17a8bf032ed6179687fa8265f215de7' 
 
 
 class Sub:
@@ -194,9 +211,11 @@ class Base:
         self.flog.write("Files have been backed up in '~/.Ubuntu-Proxy/'  with .backup extension \n")
         self.clean(filename2, filenames)
         self.fin()
-        self.filewrite(self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "")  )
+        if self.host != "":
+            self.setup(     self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
+        self.gsettings_upd( self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
         self.mbx = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_INFO, gtk.BUTTONS_CLOSE,
-                                     "SUCCESSFULLY SET")
+                                     "SUCCESSFULLY " + ("SET" if self.host != "" else "REMOVED"))
         self.mbx.run()
         self.mbx.destroy()
 
@@ -244,26 +263,7 @@ class Base:
         return s + "%s:%s\"" % (srv, port)
 
 
-    def filewrite(self, srv, port, name, pasw):
-
-        ## gsettings
-
-        self.flog.write("filewrite: gsettings,  protocTyp=< http for all >,  name:***@srv:port= < %s:***@%s:%s >  (emtpy name will be ignored => no auth)\n" % (name, srv, port))
-        os.system("gsettings set org.gnome.system.proxy mode 'manual'")
-        os.system("gsettings set org.gnome.system.proxy.http enabled true")
-        os.system("gsettings set org.gnome.system.proxy.http host '%s'" % (srv))
-        os.system("gsettings set org.gnome.system.proxy.http port '%s'" % (port))
-        os.system("gsettings set org.gnome.system.proxy.ftp host '%s'" % (srv))
-        os.system("gsettings set org.gnome.system.proxy.ftp port '%s'" % (port))
-        ## this seems not possible to apply:
-        #if self.httpsProtocol == "https":
-	#    os.system("gsettings set org.gnome.system.proxy.https host '%s'" % (srv))
-        #    os.system("gsettings set org.gnome.system.proxy.https port '%s'" % ())
-        if name != "":
-            os.system("gsettings set org.gnome.system.proxy.http authentication-user '%s'" % (name))
-            os.system("gsettings set org.gnome.system.proxy.http authentication-password '%s'" % (pasw))
-        else:
-            os.system("gsettings set org.gnome.system.proxy.http use-authentication false")
+    def setup(self, srv, port, name, pasw):
 
         ## filenames (terminal env)
 
@@ -272,9 +272,15 @@ class Base:
         for filenam in filenames:
             fil = open(filenam, "a")
             for x in typ0:
-                self.flog.write("filewrite: file=< %s >,  protocTyp=< %s >,  name:***@srv:port= < %s:***@%s:%s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" % (filenam, x, name, srv, port, self.httpsProtocol))
+                self.flog.write("setup: file=< %s >,  protocTyp=< %s >,  name:***@srv:port= < %s:***@%s:%s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" % (filenam, x, name, srv, port, self.httpsProtocol))
                 lin.append( self.declConstruct(  False,  x,  (filenam.find("bash") != -1),  self.protoForTyp(x), srv, port, name, pasw  ) + "\n")
                 lin.append( self.declConstruct(  True,   x,  (filenam.find("bash") != -1),  self.protoForTyp(x), srv, port, name, pasw  ) + "\n")
+                #if (filenam.find("bash") != -1):
+                #    if name == "": lin.append("export %s_proxy=\"%s://%s:%s\"\n"       % (x, protoForTyp(x), srv, port))
+                #    else:          lin.append("export %s_proxy=\"%s://%s:%s@%s:%s\"\n" % (x, protoForTyp(x), name, pasw, srv, port))
+                #else:
+                #    if name == "": lin.append("%s_proxy=\"%s://%s:%s\"\n"              % (x, protoForTyp(x), srv, port))
+                #    else:          lin.append("%s_proxy=\"%s://%s:%s@%s:%s\"\n"        % (x, protoForTyp(x), name, pasw, srv, port))
             for l in lin:
                 fil.write(l)
             fil.close()
@@ -285,7 +291,7 @@ class Base:
         lin = []
         fil = open(filename2, "w")
         for x in typ0:
-            self.flog.write("filewrite: file=< %s >,  protocTyp=< %s >,  name:***@srv:port= < %s:***@%s:%s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" % (filename2, x, name, srv, port, self.httpsProtocol))
+            self.flog.write("setup: file=< %s >,  protocTyp=< %s >,  name:***@srv:port= < %s:***@%s:%s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" % (filename2, x, name, srv, port, self.httpsProtocol))
             if name == "": lin.append('Acquire::%s::proxy "%s://%s:%s/";\n' % (x, self.protoForTyp(x), srv, port))
             else:          lin.append('Acquire::%s::proxy "%s://%s:%s@%s:%s/";\n' % (x, self.protoForTyp(x), name, pasw, srv, port))
         for l in lin:
@@ -379,7 +385,44 @@ class Base:
     
                 pass
 
+    def gsettings_upd(self, srv, port, name, pasw):
+        self.flog.write("gsettings_upd: protocTyp=< http for all >,  name:***@srv:port= < %s:***@%s:%s >  (emtpy name will be ignored => no auth)\n" % (name, srv, port))
 
+        #prepare_gsettings()
+
+        uid = getpwnam( gsettingsUser )[2]
+        os.setgid( uid )
+        os.setuid( uid )
+        #def setuidfunc():
+        #    os.setgid(uid)
+        #    os.setuid(uid)
+        #os.system("gsettings set org.gnome.system.proxy.http enabled false")
+        #subprocess.check_output('/bin/bash -c "gsettings set org.gnome.system.proxy mode \'auto\'"', preexec_fn=setuidfunc)
+
+        if srv == '':
+                os.system("gsettings set org.gnome.system.proxy mode '%s'" % (gsettingsResetMode))
+                #os.system("gsettings set org.gnome.system.proxy.http enabled false")
+                #subprocess.check_output('/bin/bash -c "gsettings set org.gnome.system.proxy mode \'auto\'"', preexec_fn=setuidfunc)
+                return
+
+        os.system("gsettings set org.gnome.system.proxy mode 'manual'")
+        os.system("gsettings set org.gnome.system.proxy.http enabled true")
+        os.system("gsettings set org.gnome.system.proxy.http host '%s'" % (srv))
+        os.system("gsettings set org.gnome.system.proxy.http port '%s'" % (port))
+        os.system("gsettings set org.gnome.system.proxy.ftp host '%s'" % (srv))
+        os.system("gsettings set org.gnome.system.proxy.ftp port '%s'" % (port))
+        ## this seems not possible to apply:
+        #if self.httpsProtocol == "https":
+        #    os.system("gsettings set org.gnome.system.proxy.https host '%s'" % (srv))
+        #    os.system("gsettings set org.gnome.system.proxy.https port '%s'" % ())
+        if name != "":
+            os.system("gsettings set org.gnome.system.proxy.http authentication-user '%s'" % (name))
+            os.system("gsettings set org.gnome.system.proxy.http authentication-password '%s'" % (pasw))
+        else:
+            os.system("gsettings set org.gnome.system.proxy.http use-authentication false")
+
+
+      
 if __name__ == "__main__":
     if not os.geteuid() == 0:
         args = ['gksudo', sys.executable] + sys.argv + [os.environ]
