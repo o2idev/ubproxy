@@ -20,7 +20,7 @@ with this it covers all the system places mentioned e.g. here:
 
 ![Screenshot](https://github.com/o2idev/ubproxy/blob/master/2020-07-28%2Cscreenshot)
 
-* `host`: for all HTTP, HTTPS, FTP connections
+* `host`: for all HTTP, HTTPS, FTP connections ; leave blank "" to reset proxy (remove entries and gsettings mode to 'none')
 * `port`: for all the above
 * `httpsProtocol`: default: `http` ; used for env var setup above ; maybe sometimes it must be `https`
 
@@ -36,3 +36,8 @@ to check in all the above "system places" you can execute `sh /opt/ubproxy-statu
 ## desktop shortcut
 
 create it similar to this (if moved to `/opt`): `ln -s  /opt/ubproxy  /home/user/Desktop/proxy-setup.sh`
+
+## known issues
+
+* some dconf related error can be ignored (it seems related to calling `gsettings` with the `user` account instead of some sudo user):
+lines look like this: `(process:3261): dconf-CRITICAL **: unable to create directory '/root/.cache/dconf': Keine Berechtigung.  dconf will not work properly.`
