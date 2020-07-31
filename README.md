@@ -1,5 +1,7 @@
 # ubproxy
 
+If you are running some standard Ubuntu (e.g. with the Unity UI) then first have a look if configuring it via the [standard UI](https://www.serverlab.ca/tutorials/linux/administration-linux/how-to-configure-proxy-on-ubuntu-18-04/) already solves your problems.
+
 (Ongoing development of the former https://code.google.com/p/ubproxy/)
 
 An inevitable tool to configure proxy-settings in universities and office environment.
