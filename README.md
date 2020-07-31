@@ -193,5 +193,8 @@ Opening `http://www.duckduckgo.com` should work. make sure it's not coming from 
 use `java ProxyTester <URL>`, e.g. `java ProxyTester http://www.duckduckgo.com` which should output something like this if the setup works:
 ```
 supply HTTP or HTTPS url as param
-header fields:{null=[HTTP/1.1 301 Moved Permanently], X-Cache=[MISS from lnx-proxy01], Server=[nginx], Connection=[keep-alive], Date=[Thu, 30 Jul 2020 06:46:22 GMT], Via=[1.1 proxy01 (squid/8.8.8)], Strict-Transport-Security=[max-age=31536000], Cache-Control=[max-age=31536000], X-Cache-Lookup=[MISS from proxy01:8080], Expires=[Fri, 30 Jul 2021 06:46:22 GMT], Content-Length=[162], Age=[94138], Location=[https://duckduckgo.com/], Content-Type=[text/html]}
+header fields:{null=[HTTP/1.1 301 Moved Permanently], X-Cache=[MISS from lnx-proxy01], Server=[nginx], Connection=[keep-alive], 
+Date=[Thu, 30 Jul 2020 06:46:22 GMT], Via=[1.1 proxy01 (squid/8.8.8)], Strict-Transport-Security=[max-age=31536000], 
+Cache-Control=[max-age=31536000], X-Cache-Lookup=[MISS from proxy01:8080], Expires=[Fri, 30 Jul 2021 06:46:22 GMT], Content-Length=[162], 
+Age=[94138], Location=[https://duckduckgo.com/], Content-Type=[text/html]}
 ``` 
