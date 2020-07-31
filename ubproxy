@@ -37,12 +37,17 @@ import sys
 from datetime import datetime
 from pwd import getpwnam
 
-filenames = ["/etc/bash.bashrc", "/etc/environment"]
-filename2 = "/etc/apt/apt.conf"
+pathsEnv = ["/etc/bash.bashrc", "/etc/environment"]
+pathAptConf = "/etc/apt/apt.conf"
+pathJreProps = subprocess.check_output(['/bin/bash', '-c', r"update-alternatives --query java | grep 'Value: ' | sed 's/Value: \(.*\)\/bin\/java/\1\/lib\/net.properties/'"]).strip()
 logs = "/var/log/proxychangerlog"
+
+## hard coded defaults: (TODO: make adjustable in GUI)
 
 gsettingsUser = 'user'
 gsettingsResetMode = 'none'
+## false: only sets java.net.useSystemProxies=true ; true: also sets http.proxyHost=... etc.
+pathJrePropsUpdHostPortOn = False
 
 
 ## https://askubuntu.com/a/484752
@@ -180,8 +185,8 @@ class Base:
         self.window.show()
         self.window.set_title("Ubproxy")
         self.opentext()
-        self.button1.connect("clicked", self.set, None)
-        self.button2.connect("clicked", self.remove, None)
+        self.button1.connect("clicked", self.proxyActivate, None)
+        self.button2.connect("clicked", self.proxyDeactivate, None)
         self.button1.connect_object("clicked", gtk.Widget.destroy, self.window)
         self.button2.connect_object("clicked", gtk.Widget.destroy, self.window)
         self.window.connect("destroy", self.destroy)
@@ -206,14 +211,13 @@ class Base:
         if (widget.get_active()):
             sub = Sub(self)
 
-    def set(self, widget, data=None):
-        self.backup([filenames[0], filenames[1], filename2])
+    def proxyActivate(self, widget, data=None):
+        self.proxyFilesBackup([pathsEnv[0], pathsEnv[1], pathAptConf, pathJreProps])
         self.flog.write("Files have been backed up in '~/.Ubuntu-Proxy/'  with .backup extension \n")
-        self.clean(filename2, filenames)
+        self.proxyDeactivate4Files( True )
         self.fin()
-        if self.host != "":
-            self.setup(     self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
-        self.gsettings_upd( self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
+        self.proxyActivate4Files(     self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
+        self.proxyUpd4Gsettings( False, self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
         self.mbx = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_INFO, gtk.BUTTONS_CLOSE,
                                      "SUCCESSFULLY " + ("SET" if self.host != "" else "REMOVED"))
         self.mbx.run()
@@ -222,10 +226,11 @@ class Base:
     def delete_event(self, widget, event, data=None):
         return False
 
-    def remove(self, widget, data=None):
-        self.backup([filenames[0], filenames[1], filename2])
+    def proxyDeactivate(self, widget, data=None):
+        self.proxyFilesBackup([pathsEnv[0], pathsEnv[1], pathAptConf])
         self.flog.write("Files have been backed up in '~/.Ubuntu-Proxy/' with .backup extension \n")
-        self.clean(filename2, filenames)
+        self.proxyDeactivate4Files( False )
+        self.proxyUpd4Gsettings( True )
         self.flog.write("Old Proxy-Settings removed \n")
         self.mbx = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_INFO, gtk.BUTTONS_CLOSE,
                                      "SUCCESSFULLY REMOVED")
@@ -247,59 +252,82 @@ class Base:
 
     ## on "https" it may be "http" or "https" depending on your env
     ## otherwise it returns <typ> as is
-    def protoForTyp(self, typ):
+    def protPrefix(self, typ):
         return self.httpsProtocol if typ == "https" else typ
 
 
-    ## e.g. < export https_proxy="http://myusr:mypass@myhost:8080" >
-    ## e.g. < export https_proxy="https://myusr:mypass@myhost:8080" >
-    ## e.g. < HTTP_PROXY="http://myhost:8080" >
-    def declConstruct(self, upperOn, typ, bashOn, protoTyp, srv, port, name, pasw):
-        s = "export " if bashOn else ""
-        v = "%s_proxy" % (typ)
-        s += v.upper() if upperOn else v
-        s += "=\"%s://" % (protoTyp)
-        if name != "":  s += "%s:%s@" % (name, pasw)
-        return s + "%s:%s\"" % (srv, port)
+    def fileLinesAppend(self, path, proxyAuthSrvPortSuffix, lineGenFunc, srv, port, name, pasw ):
 
-
-    def setup(self, srv, port, name, pasw):
-
-        ## filenames (terminal env)
-
-        lin = []
-        typ0 = ("http", "ftp", "https")
-        for filenam in filenames:
-            fil = open(filenam, "a")
-            for x in typ0:
-                self.flog.write("setup: file=< %s >,  protocTyp=< %s >,  name:***@srv:port= < %s:***@%s:%s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" % (filenam, x, name, srv, port, self.httpsProtocol))
-                lin.append( self.declConstruct(  False,  x,  (filenam.find("bash") != -1),  self.protoForTyp(x), srv, port, name, pasw  ) + "\n")
-                lin.append( self.declConstruct(  True,   x,  (filenam.find("bash") != -1),  self.protoForTyp(x), srv, port, name, pasw  ) + "\n")
-                #if (filenam.find("bash") != -1):
-                #    if name == "": lin.append("export %s_proxy=\"%s://%s:%s\"\n"       % (x, protoForTyp(x), srv, port))
-                #    else:          lin.append("export %s_proxy=\"%s://%s:%s@%s:%s\"\n" % (x, protoForTyp(x), name, pasw, srv, port))
-                #else:
-                #    if name == "": lin.append("%s_proxy=\"%s://%s:%s\"\n"              % (x, protoForTyp(x), srv, port))
-                #    else:          lin.append("%s_proxy=\"%s://%s:%s@%s:%s\"\n"        % (x, protoForTyp(x), name, pasw, srv, port))
-            for l in lin:
-                fil.write(l)
-            fil.close()
-            lin = []
-    
-        ## filename2 (apt.conf)
-
-        lin = []
-        fil = open(filename2, "w")
-        for x in typ0:
-            self.flog.write("setup: file=< %s >,  protocTyp=< %s >,  name:***@srv:port= < %s:***@%s:%s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" % (filename2, x, name, srv, port, self.httpsProtocol))
-            if name == "": lin.append('Acquire::%s::proxy "%s://%s:%s/";\n' % (x, self.protoForTyp(x), srv, port))
-            else:          lin.append('Acquire::%s::proxy "%s://%s:%s@%s:%s/";\n' % (x, self.protoForTyp(x), name, pasw, srv, port))
-        for l in lin:
+	logFileLinePattern = "proxyActivate4Files: file=< %s >,  protocTyp=< %s >" + (
+		",  proxyAuthSrvPortSuffix= < %s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" 
+		% ( re.sub( r'^(.+:).*(@.+)$',  r'\1***\3',  proxyAuthSrvPortSuffix ),  self.httpsProtocol))
+        lines = []
+        fil = open(path, "a")
+	fil.write('\n')  # avoid appending on existing line
+        for protId in ("http", "ftp", "https"):
+            self.flog.write(logFileLinePattern % (path, protId))
+	    lineGenFunc( lines, path, protId, self.protPrefix(protId), proxyAuthSrvPortSuffix, srv, port, name, pasw  )
+        for l in lines:
             fil.write(l)
         fil.close()
 
 
-    def backup(self, *files):
+    def proxyActivate4Files(self, srv, port, name, pasw):
+
+	proxyAuthSrvPortSuffix = "%s%s:%s" % ("" if name == "" else ("%s:%s@" % (name, pasw)),  srv, port)
+
+
+        ## pathsEnv (/etc/bash.bashrc, /etc/environment)
+
+	## e.g. < export https_proxy="http://myusr:mypass@myhost:8080" >
+	## e.g. < export https_proxy="https://myusr:mypass@myhost:8080" >
+	## e.g. < HTTP_PROXY="http://myhost:8080" >
+	def pathEnvLineGenFunc(upperOn, protId, bashOn, protPrefix, proxyAuthSrvPortSuffix):
+		v = "%s_proxy" % (protId)
+		return "%s%s=\"%s://%s\"" % (
+			"export " if bashOn else "",
+			v.upper() if upperOn else v, 
+			protPrefix, 
+			proxyAuthSrvPortSuffix
+		)
+
+	def pathsEnvLineGenFuncLower(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw):
+		lines.append( pathEnvLineGenFunc(  False,  protId,  (path.find("bash") != -1),  protPrefix, proxyAuthSrvPortSuffix  ) + "\n")
+
+	def pathsEnvLineGenFuncUpper(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw):
+		lines.append( pathEnvLineGenFunc(  True,  protId,  (path.find("bash") != -1),  protPrefix, proxyAuthSrvPortSuffix  ) + "\n")
+
+	for upperC in (False, True):
+		self.fileLinesAppend( pathsEnv[0], proxyAuthSrvPortSuffix, pathsEnvLineGenFuncUpper if upperC else pathsEnvLineGenFuncLower, srv, port, name, pasw )
+		self.fileLinesAppend( pathsEnv[1], proxyAuthSrvPortSuffix, pathsEnvLineGenFuncUpper if upperC else pathsEnvLineGenFuncLower, srv, port, name, pasw )
+
+
+        ## pathAptConf (apt.conf)
+
+	## e.g. appending < Acquire::https::proxy "http://myusr:mypass@myhost:8080"; >
+	def pathAptConfLineGenFunc(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw ):
+            lines.append('Acquire::%s::proxy "%s://%s/";\n' % (protId, protPrefix, proxyAuthSrvPortSuffix))
+
+	self.fileLinesAppend( pathAptConf, proxyAuthSrvPortSuffix, pathAptConfLineGenFunc, srv, port, name, pasw )
+		
+
+        ## pathJreProps (net.properties)
+
+	## e.g. appending
+        ##   https.proxyHost=myhost
+	##   https.proxyPort=8080
+	##   java.net.useSystemProxies=true
+	if pathJrePropsUpdHostPortOn:
+		def pathJrePropsLineGenFunc(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw):
+        	    lines.append('%s.proxyHost=%s\n' % (protId, srv))
+	            lines.append('%s.proxyPort=%s\n' % (protId, port))
+		    #if protId == 'http':
+	            	#lines.append('java.net.useSystemProxies=true\n')  ## done in proxyDeactivate4Files
+
+		self.fileLinesAppend( pathJreProps, proxyAuthSrvPortSuffix, pathJrePropsLineGenFunc, srv, port, name, pasw  )
+		
+
+    def proxyFilesBackup(self, *files):
         homefol = os.getenv('HOME')
         folder = homefol + "/.Ubuntu-Proxy/"
         try:
@@ -336,57 +364,39 @@ class Base:
                 pass
 
 
-    #def clean(self, file2, *files, para=False):
-    def clean(self, file2, files): 
-        para=False
+    def proxyDeactivate4File(self, path, matchReplPairs): 
+		try:
+		    self.flog.write("proxyDeactivate4Files: file=< %s >,  matchReplPairs=< %s >\n" % (path, matchReplPairs))
+		    f = open(path, 'r')
+		    l = f.read()
+                    for mr in matchReplPairs:
+		    	if re.search(mr[0], l, flags=re.I):
+			    	l = re.sub(mr[0], mr[1], l, flags=re.I)
+		    f.close()
+		    f = open(path, 'w')
+		    f.write(l)
+		    f.close()
+		except:
+		    pass
 
-        if (para):
-            for file1 in files:
-                try:
-                    self.flog.write("clean: file=< %s >\n" % (file1))
-                    f = open(file1, 'r')
-                    l = f.read()
-                    l = re.sub(r'\n?(.*http_proxy\s*=\s*".*")', r'\n# \g<1>', l, flags=re.I)
-                    l = re.sub(r'\n?(.*https_proxy\s*=\s*".*")', r'\n# \g<1>', l, flags=re.I)
-                    l = re.sub(r'\n?(.*ftp_proxy\s*=\s*".*")', r'\n# \g<1>', l, flags=re.I)
-                    f.close()
-                    f = open(file1, 'w')
-                    f.write(l)
-                    f.close()
-                except:
 
-                    pass
-        else:
-            for file1 in files:
-                try:
-                    self.flog.write("clean: file=< %s >\n" % (file1))
-                    f = open(file1, 'r')
-                    l = f.read()
-                    l = re.sub(r'\n?(.*http_proxy\s*=\s*".*")', r'', l, flags=re.I)
-                    l = re.sub(r'\n?(.*https_proxy\s*=\s*".*")', r'', l, flags=re.I)
-                    l = re.sub(r'\n?(.*ftp_proxy\s*=\s*".*")', r'', l, flags=re.I)
-                    f.close()
-                    f = open(file1, 'w')
-                    f.write(l)
-                    f.close()
-                except:
-    
-                    pass
-            try:
-                self.flog.write("clean: file=< %s >\n" % (file2))
-                f = open(file2, "r")
-                l = f.read()
-                l = re.sub(r'\n?(.*Acquire.*".*?";)', "", l)
-                f.close()
-                f = open(file2, 'w')
-                f.write(l)
-                f.close()
-            except:
-    
-                pass
+    def proxyDeactivate4Files(self, beforeActivateOn): 
 
-    def gsettings_upd(self, srv, port, name, pasw):
-        self.flog.write("gsettings_upd: protocTyp=< http for all >,  name:***@srv:port= < %s:***@%s:%s >  (emtpy name will be ignored => no auth)\n" % (name, srv, port))
+	self.flog.write('proxyDeactivate4Files: beforeActivateOn= %s\n' % (beforeActivateOn))
+
+	for pathEnv in pathsEnv:
+		self.proxyDeactivate4File(pathEnv, [[r'\n?(\s*(export)?\s+(https?|ftp)_proxy\s*=\s*".*")', r'']])
+
+	self.proxyDeactivate4File(pathAptConf, [[r'\n?(\s*Acquire::.+::proxy\s+"[^"]*"\s*;)', r'']])
+	
+	mrPairs = [[r'(\n?\s*java.net.useSystemProxies\s*=\s*)(true|false)(.*)',  r'\1true\3' if beforeActivateOn else r'\1false\3']]
+	if pathJrePropsUpdHostPortOn and beforeActivateOn:  ## => remove old http.proxyHost etc. entries
+		mrPairs.append([r'\n?(\s*(https?|ftp)\.proxy(Host|Port)\s*=.+)',  r''])
+	self.proxyDeactivate4File(pathJreProps, mrPairs)
+
+
+    def proxyUpd4Gsettings(self, deactivateOn, srv = "", port = 8080, name = "", pasw = ""):
+        self.flog.write("proxyUpd4Gsettings:  deactivateOn= %s,  protocTyp=< http for all >,  name:***@srv:port= < %s:***@%s:%s >  (emtpy name will be ignored => no auth)\n" % (deactivateOn, name, srv, port))
 
         #prepare_gsettings()
 
@@ -399,7 +409,7 @@ class Base:
         #os.system("gsettings set org.gnome.system.proxy.http enabled false")
         #subprocess.check_output('/bin/bash -c "gsettings set org.gnome.system.proxy mode \'auto\'"', preexec_fn=setuidfunc)
 
-        if srv == '':
+        if deactivateOn:
                 os.system("gsettings set org.gnome.system.proxy mode '%s'" % (gsettingsResetMode))
                 #os.system("gsettings set org.gnome.system.proxy.http enabled false")
                 #subprocess.check_output('/bin/bash -c "gsettings set org.gnome.system.proxy mode \'auto\'"', preexec_fn=setuidfunc)
