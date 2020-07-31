@@ -39,7 +39,7 @@ create it similar to this (if moved to `/opt`): `ln -s  /opt/ubproxy  /home/user
 
 ## known issues
 
-* some `dconf` related error can be ignored (it seems related to calling `gsettings` with the `user` account instead of some sudo user):
+* some `dconf` related errors can be ignored (it seems related to calling `gsettings` with the `user` account instead of some sudo user):
 lines look like this: `(process:3261): dconf-CRITICAL **: unable to create directory '/root/.cache/dconf': Keine Berechtigung.  dconf will not work properly.`
 
 ## test current proxy setup
