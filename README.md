@@ -219,12 +219,10 @@ Age=[94138], Location=[https://duckduckgo.com/], Content-Type=[text/html]}
 
 ### v2.0.0
 
-* gsettings support added
+* `gsettings` support added
 * `httpsProtocol` GUI parameter
 * default JAVA/JRE support added
 * various fixes/refactorings
-
-there are the following enhancements:
 
 ### v1.0.0
 
