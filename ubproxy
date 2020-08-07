@@ -34,89 +34,447 @@ import os
 import subprocess
 import re
 import sys
+import glob
 from datetime import datetime
 from pwd import getpwnam
 
-pathsEnv = ["/etc/bash.bashrc", "/etc/environment"]
-pathAptConf = "/etc/apt/apt.conf"
-pathJreProps = subprocess.check_output(['/bin/bash', '-c', r"update-alternatives --query java | grep 'Value: ' | sed 's/Value: \(.*\)\/bin\/java/\1\/lib\/net.properties/'"]).strip()
-logs = "/var/log/proxychangerlog"
 
-## hard coded defaults: (TODO: make adjustable in GUI)
+###############
+## TODO: externalizable stuff / to GUI or cmd line
+###############
 
-gsettingsUser = 'user'
-gsettingsResetMode = 'none'
-## false: only sets java.net.useSystemProxies=true ; true: also sets http.proxyHost=... etc.
-pathJrePropsUpdHostPortOn = False
+#--------------
+# only for plugins/apps:
+#--------------
 
+## will be assigned the given GUI conf by the framework
+proxyCfg = None  # type: ProxyCfg
 
-## https://askubuntu.com/a/484752
-def prepare_gsettings():
-    #pid = subprocess.check_output(["pgrep", "gnome-session"]).decode("utf-8").strip(A)
-    pid = subprocess.check_output(["pgrep", "xfce4-session"]).decode("utf-8").strip()
-    #cmd = "grep -z DBUS_SESSION_BUS_ADDRESS /proc/"+pid+"/environ|cut -d= -f2-"
-    cmd = "grep -z DBUS_SESSION_BUS_ADDRESS /proc/"+pid+"/environ  |  cut -d= -f2-  |  sed -r 's/(.+)/DBUS_SESSION_BUS_ADDRESS=\\\\1/'"
-    #print ("PATH: < %s >" % (os.environ["PATH"]))
-    #print ("DBUS_SESSION_BUS_ADDRESS: < %s >" % (os.environ["DBUS_SESSION_BUS_ADDRESS"]))
-    os.environ["DBUS_SESSION_BUS_ADDRESS"] = subprocess.check_output(['/bin/bash', '-c', cmd]).decode("utf-8").strip().replace("\0", "")
-    #os.environ["DBUS_SESSION_BUS_ADDRESS"] = 'unix:abstract=/tmp/dbus-3LpGWPt0WX,guid=c17a8bf032ed6179687fa8265f215de7' 
+enableProxyPhaseOn = None  # type: bool ; will be set by framework during execution
 
+appsKeepAllProxySettingsCleanOn = True  ## type: bool ; (recommended:) 
+                                        ## remove e.g. host and port settings even though there may be some separate ...
+                                        ##    "[ ] activate proxy" switch on deactivation 
+                                        ## or "[x] use sys proxy" switch on activation
+#appsKeepAllProxySettingsCleanOn = False  ## type: bool
 
-class Sub:
-    def __init__(self, base):
-        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-        self.window.set_title("Authorization")
-        self.vbox = gtk.VBox()
-        self.hbox0 = gtk.HBox()
-        self.hbox1 = gtk.HBox()
-        self.hbox2 = gtk.HBox()
-        self.label1 = gtk.Label("Username")
-        self.label2 = gtk.Label("Password")
-        self.entry1 = gtk.Entry()
-        self.entry2 = gtk.Entry()
-        self.entry2.set_visibility(False)
-        self.but1 = gtk.Button("Ok")
-        self.but2 = gtk.Button("Cancel")
+appsUseSystemProxiesOnDeactivate = True  # type: bool ; (recommended:) if supported by the app, system proxy settings should be used on deactivation
+#appsUseSystemProxiesOnDeactivate = False  # type: bool ; e.g. to ignore system proxy settings on deactivation
 
-        self.hbox0.pack_start(self.label1)
-        self.hbox0.pack_start(self.entry1)
-        self.hbox1.pack_start(self.label2)
-        self.hbox1.pack_start(self.entry2)
-        self.hbox2.pack_start(self.but1)
-        self.hbox2.pack_start(self.but2)
-
-        self.vbox.pack_start(self.hbox0)
-        self.vbox.pack_start(self.hbox1)
-        self.vbox.pack_start(self.hbox2)
-        self.label1.show()
-        self.label2.show()
-        self.entry1.show()
-        self.entry2.show()
-        self.but1.show()
-        self.but2.show()
-        self.hbox0.show()
-        self.hbox1.show()
-        self.hbox2.show()
-        self.vbox.show()
-        self.window.add(self.vbox)
-        self.window.show()
-        self.but2.connect("clicked", self.cancel, base.checkbox)
-        self.but2.connect_object("clicked", gtk.Widget.destroy, self.window)
-        self.but1.connect("clicked", self.ok, base)
-        self.but1.connect_object("clicked", gtk.Widget.destroy, self.window)
-
-    def ok(self, event, data=None):
-        data.uname = self.entry1.get_text()
-        data.passw = self.entry2.get_text()
-
-    def cancel(self, event, data=None):
-        data.set_active(False)
-
-    def delete_event(self, widget, event, data=None):
-        return True
+appsUseSystemProxiesOnActivate = True  # type: bool ; (recommended:) if supported by the app, system proxy settings should be used on activation
+#appsUseSystemProxiesOnActivate = False  # type: bool e.g. to ignore system proxy settings on activation
 
 
-class Base:
+#--------------
+# shared with plugins:
+#--------------
+
+dbgOn = False  ## prod: debug logging off
+#dbgOn = True  ## debug: debug logging on
+
+#--------------
+# not relevant for plugins (code) itself:
+#--------------
+
+## plugins not starting with 'P' will be ignored => easy option e.g. to deactivate them by prefixing '_'
+##   => avoids reported ignoreable errors on execution
+pluginsPathGlob = '%s/plugins/P*' % os.path.dirname(os.path.realpath(__file__))
+pluginsUseMatch = '.*'  ## recommended: use all and let those report problems that e.g. do not find an installed plugin-specific app
+#pluginsUseMatch='Plugin(EtcEnv|BashRc|AptConf)'  ## e.g. to only use those
+
+backupsDir = '%s/.ubproxy-backups/' % os.getenv('HOME')
+logs = "/var/log/ubproxy.log"
+
+
+###############
+## code
+###############
+
+errCnt = 0
+
+try:
+	_log = open(logs, "a")
+except:
+	print "need sudo rights!"
+	sys.exit(1)
+
+def glog(msg): _log.write("%s\n" % (msg))
+def gerr(msg): global errCnt ; errCnt += 1 ; glog("ERR: %s" % msg) ; sys.stderr.write('ERR: %s\n' % msg)
+def gdbg(msg): 
+	if dbgOn: glog('DBG: %s' % (msg))
+
+glog('\n%s' % (str(datetime.now())))
+print ""  ## better readability
+if dbgOn: msg = 'WARN: dbgOn= True !' ;  print msg ;  glog(msg)
+
+mgr = None  # type: Mgr
+
+
+class ProxyCfg:
+	srv = ""      # type: str
+	port = 8080   # type: int
+	usrname = ""  # type: str
+	usrpass = ""  # type: str
+
+	## default: each protocol uses the "http" protocol prefix for URL-based proxy reference, e.g. "http://myproxy:8080"
+	protIdPrefixMap = { "http": "http",  "ftp": "http",  "https": "http" }
+	
+	def authSrvPortSuffix(self, showPassOn = False):
+		return "%s%s:%s" % (
+			"" if self.usrname == "" else ("%s:%s@" % (self.ursname, self.usrpass if showPassOn else '***')),
+			self.srv, self.port)
+
+	def __init__(  self,  srv,  port,  usrname,  usrpass,  httpsProtocol  ):  # type: (str, int, str, str, str)
+		self.srv = srv
+		self.port = port
+		self.usrname = usrname
+		self.usrpass = usrpass
+		self.protIdPrefixMap["https"] = httpsProtocol
+		self.log('proxy cfg prepared: %s' % (self))
+
+	def __str__(self): return 'authSrvPortSuffix=< %s >,  protoMap= %s' % (self.authSrvPortSuffix(), self.protIdPrefixMap)
+
+	def log(self, msg): glog('ProxyCfg: %s' % (msg))
+	def dbg(self, msg): gdbg('ProxyCfg: %s' % (msg))
+	def err(self, msg): gerr('ProxyCfg: %s' % (msg))
+
+
+## UI independent business logic
+class Mgr:
+
+    plugins = []  # type: [Plugin]
+
+    def log(self, msg): glog('Mgr: %s' % (msg))
+    def dbg(self, msg): gdbg('Mgr: %s' % (msg))
+    def err(self, msg): gerr('Mgr: %s' % (msg))
+
+	## => decision table: 
+	##
+	## scenarios:
+	##   c     = appsKeepAllProxySettingsCleanOn
+	##   ds    = appsUseSystemProxiesOnDeactivate
+	##   as    = appsUseSystemProxiesOnActivate
+	##   a/d   = (de)activation app proxy scenario
+	##
+	## actions:
+	##   +/-   = set up /remove all proxy settings (ignore system proxy usage switches)
+	##   s+/s- = system proxy use/ignore
+	##   c+    = clean irrelevant entries
+	## 
+	##   *     = flag does'nt matter / all possibilities lead to same actions
+	##
+	##   a/d | as | ds | c | actions
+	##   ---------------------------
+	##   a   | x  | *  | x | s+, c+
+	##   a   | x  | *  | - | s+
+	##   a   | -  | *  | * | s-, +
+	##   d   | *  | x  | x | s+, c+
+	##   d   | *  | x  | - | s+
+	##   d   | *  | -  | * | s-, c+
+	##
+	##   => action logic:
+	##
+	##     s- <= a+!as or d+!ds
+	##    (s+ <= !s-)
+	##     +  <= a+!as
+	##     c+ <= a+as+c or d+ds+c or d+!ds
+	##         = (a+as or d+ds)+c or d+!ds
+
+	## see action logic above
+    def appsUseSystemProxiesOn(self):  # type: (bool) => bool
+		return not(                                                                           ## !(
+			       enableProxyPhaseOn and not appsUseSystemProxiesOnActivate              ##      a+!as
+			or not enableProxyPhaseOn and     appsUseSystemProxiesOnDeactivate            ##   or d+!ds )
+		)
+
+    ## see action logic above
+    def appsSetupProxyDetailsOn(self):  # type: (bool) => bool
+		return enableProxyPhaseOn and not appsUseSystemProxiesOnActivate                      ## a+!as
+
+    ## see action logic above
+    def appsCleanProxyDetailsOn(self):  # type: (bool) => bool
+		return (  appsKeepAllProxySettingsCleanOn and (                                       ## c + (
+				       enableProxyPhaseOn and     appsUseSystemProxiesOnActivate      ##      a+as
+				or not enableProxyPhaseOn and     appsUseSystemProxiesOnDeactivate )  ##   or d+ds)
+		        or         not enableProxyPhaseOn and not appsUseSystemProxiesOnDeactivate )  ## or d+!ds
+
+    def loadPlugins(self):
+	self.log('loadPlugins: from "plugins" subdir (filenames should match class name without optional ".py" extension!)')
+	plugClasses = []
+	for fn in glob.glob( pluginsPathGlob ):
+		try:
+			if re.match( pluginsUseMatch, fn ):
+				self.log('loadPlugins: file=< %s >' % fn)
+				with open(fn) as f:
+					exec(f.read())
+				exec("plugClasses.append( %s )" % re.sub(  r'.+/([^/\.]+)(|\.py)$',  r'\1',  fn  ))
+			else:
+				self.log('loadPlugins: ignored: file=< %s >,  pluginsUseMatch=< %s >' % (fn, pluginsUseMatch))
+		except:
+		    self.err("loadPlugins: ignoring error: loading code: filepath < %s >:  %s" % (fn,  sys.exc_info()))
+	plugClassesLast = []
+	for cl in plugClasses:
+		try:
+			self.plugins.append( cl() )
+			if self.plugins[-1].execLastOn:
+				self.log('loadPlugins: execLastOn so moving to end of plugin exec list: %s' % self.plugins[-1])
+				plugClassesLast.append( self.plugins[-1] )
+				del self.plugins[-1]
+		except:
+		    self.err("loadPlugins: ignoring error: instantiating: class < %s >:  %s" % (cl, sys.exc_info() ))
+	self.plugins += plugClassesLast
+	
+
+    def appsDetails(self):
+	return 'appsUseSystemProxiesOn= %s,  appsSetupProxyDetailsOn= %s,  appsCleanProxyDetailsOn= %s' % (self.appsUseSystemProxiesOn(), self.appsSetupProxyDetailsOn(), self.appsCleanProxyDetailsOn() )
+
+    def pluginDetails(self, plug): 
+	return '%s: plugin= %s,  appUseSystemProxiesOn= %s,  appSetupProxyDetailsOn= %s,  appsCleanProxyDetailsOn= %s' % (
+		'proxyActivate' if enableProxyPhaseOn else 'proxyDeactivate',  plug.name(),  
+		  plug.appUseSystemProxiesOn(),  plug.appSetupProxyDetailsOn(),  plug.appCleanProxyDetailsOn() )
+
+
+    def proxyActivate(self):
+
+	self.loadPlugins()
+        self.proxyFilesBackup()
+
+	global enableProxyPhaseOn
+	enableProxyPhaseOn = True
+	self.log('proxyActivate: %s' % self.appsDetails())
+	for p in self.plugins:
+		try:
+			self.log(self.pluginDetails(p))
+			p.apply()
+		except:
+		    self.err("proxyActivate: ignoring plugin error: plugin=< %s >:  %s" % (p, sys.exc_info()))
+
+	self.pluginSetupShow()
+	uiMgr.finalDialog('SUCCESSFULLY')
+
+
+    def proxyDeactivate(self):
+
+	self.loadPlugins()
+        self.proxyFilesBackup()
+
+	global enableProxyPhaseOn
+	enableProxyPhaseOn = False
+	self.log('proxyDeactivate: %s' % self.appsDetails())
+	for p in self.plugins:
+		try:
+			self.log(self.pluginDetails(p))
+			p.apply()
+		except:
+		    self.err("proxyDeactivate: ignoring plugin error: plugin=< %s >:  %s" % (p, sys.exc_info()))
+
+        self.log("Old Proxy-Settings removed")
+
+	self.pluginSetupShow()
+	uiMgr.finalDialog('SUCCESSFULLY REMOVED')
+
+
+    def pluginSetupShow(self):
+	glog('\n')
+	for p in self.plugins:
+		try:
+			self.log('pluginSetupShow: %s\n_____start:_____' % p)
+			print '\nshowing plugin setup for %s:\n' % p
+			p.setupShow()
+			glog('_____:end_____\n')
+		except:
+		    self.err("pluginSetupShow: ignoring plugin error: plugin=< %s >:  %s" % (p, sys.exc_info()))
+	print ""  ## nice output
+
+
+    def proxyFilesBackup(self):
+	files = []
+	for p in self.plugins:
+		try:
+			if isinstance(p, PluginFile):
+				files.append( p.path() )
+			else: self.log('proxyFilesBackup: ignoring non file plugin: %s: class= %s' % (p, p.__class__.__name__))
+		except:
+		    self.err("proxyFilesBackup: ignoring file plugin error collecting paths: plugin=< %s >:  %s" % (p, sys.exc_info()))
+
+	self.log("proxyFilesBackup:  files= %s" % (files))
+        try:
+            os.mkdir( backupsDir )
+        except:
+            pass
+
+        filstr = datetime.now().strftime('%Y%h%d_%H%M%S')
+        newfolder = '%s/%s/' % (backupsDir, filstr)
+        try:
+            os.mkdir(newfolder)
+        except:
+            pass
+
+        for fil in files:
+            try:
+		self.log("proxyFilesBackup:  file= < %s >" % (fil))
+                with open(fil, 'r') as f1:  l = f1.read()
+
+                if (fil.find(".") == -1):
+                    newname = fil[fil.rfind('/') + 1:] + ".backup"
+                else:
+                    fil = fil[fil.rfind('/') + 1:]
+                    newname = fil[:fil.find(".")] + ".backup"
+                newname = newfolder + newname
+                with open(newname, "w") as f2:  f2.write(l)
+            except:
+		self.err("proxyFilesBackup: ignoring plugin error on copy: plugin=< %s >:  %s" % (p, sys.exc_info()))
+        self.log("Files have been backed up in '~/.Ubuntu-Proxy/'  with .backup extension")
+
+
+    def destroy(self):
+		if (_log != None):
+		    _log.close()
+
+    #def startUi(self):		
+	#    if dbgOn: print ('DBG: ubproxy ui start')  ## debug
+	#    ## TODO cmd line feature without GUI:
+	#    #print('usage: ubproxy  [-u usrname  -pw  -h <host>  -po <port>  [-protoPrefixes=<for-http,for-https,for-ftp>]]\n'
+	#	#+ '  no args: open Gnome GUI for setup')
+	#    if not os.geteuid() == 0:
+	#    	global args
+	#	args = ['gksudo', sys.executable] + sys.argv + [os.environ]
+	#	os.execlpe('gksudo', *args)
+	#    if dbgOn: print ('DBG: after gksudo')  ## debug
+	#    global uiMgr
+	#    uiMgr = UiMgr()
+	#    gtk.main()
+	#    if dbgOn: print ('DBG: main finished')  ## debug
+
+
+class Plugin:
+
+	execLastOn = False  # e.g. PluginGsettings changes current user which can't easily be changed back
+                            # leading to access right violations for later file modifications
+                            # => moves such plugins at the end of the exec list
+
+	def __str__(self): return '%s(%s)' % (self.__class__.__name__,  self.name())
+
+	# @abstractmethod
+	def name(self): pass
+
+	# @abstractmethod
+	def supportsSystemProxiesUsage(self): return False  # type: () => bool
+
+	# @abstractmethod
+	def setupShow(self): pass
+
+	# called finally in Plugin __init__() constructor, e.g. to update execLastOn
+	def load(self): pass
+
+	## the standard line substitution logic calling first substLines(...) and if not disableOn: addLines(...)
+	## disableOn:  if True: the proxy should be disabled
+	# @abstractmethod
+	def apply(self,  disableOn): pass  # type: (bool)
+
+
+	def __init__(self):  # type(ProxyCfg)
+		self.load()
+
+
+	def log(self, msg): glog('plugin %s: %s' % (self.name(), msg))
+	def dbg(self, msg): gdbg('plugin %s: %s' % (self.name(), msg))
+	def err(self, msg): gerr('plugin %s: %s' % (self.name(), msg))
+
+	def appUseSystemProxiesOn(self):  # type: (bool) => bool
+		return mgr.appsUseSystemProxiesOn() and self.supportsSystemProxiesUsage()
+
+	## if the plugin/app does not support system proxy usage but it should use it this will return True
+	def appSetupProxyDetailsOn(self):  # type: (bool) => bool
+		return mgr.appsSetupProxyDetailsOn() or enableProxyPhaseOn and not self.appUseSystemProxiesOn()
+
+	def appCleanProxyDetailsOn(self):  # type: (bool) => bool
+		return mgr.appsCleanProxyDetailsOn()
+
+
+## simple whole-text(lines) matches that:
+##  - can be substitution rules (that may also e.g. remove lines) applied on proxy removal or before setting it
+##  - any logic on the file content on adding the proxy, e.g. appending (previously removed) lines
+class PluginFile(Plugin):
+
+	def __str__(self): return '%s(%s, path=< %s >)' % (self.__class__.__name__,  self.name(),  self.path())
+
+	# @abstractmethod
+	def path(self): pass
+
+	## map of [match:repl] regex pairs, e.g. [[r'\n?(\s*export\s+(https?|ftp)_proxy\s*=\s*".*")', r'']]
+	# @abstractmethod
+	def substLineRules(self): pass  # type(bool)
+
+	## the individual replacement string generation depending on the protocol id param
+	# @abstractmethod
+	def addLineForProtId(self,  lines,  protId): pass
+
+
+	## the standard line substitution logic calling first substLines(...) and if not disableOn: addLines(...)
+	## disableOn:  if True: the proxy should be disabled
+	def apply(self):  # type(bool)
+
+		self.substLines()
+		if enableProxyPhaseOn: self.addLines()
+
+
+	## called on disabling proxy or before appending current setup
+	## beforeActivateOn: if False => disable proxy scenario
+	def substLines(self):  # type(bool)
+		mrp = self.substLineRules()  ## match-repl-pairs
+	    	self.log("substLines: file=< %s >,  matchReplPairs=< %s >" % (self.path(),  mrp))
+		with open(self.path(), 'r') as f:
+			l = f.read()
+			for mr in mrp:
+			    	self.dbg('substLines: match=< %s >,  repl=< %s >' % (mr[0], mr[1]))
+				if re.search(mr[0], l, flags=re.I):
+				    	l = re.sub(mr[0], mr[1], l, flags=re.I)
+		with open(self.path(), 'w') as f:
+			f.write(l)
+
+
+	def addLines(self):
+		lines = []
+		with open(self.path(), 'a') as f:
+			f.write('\n')  # avoid appending on existing line
+			for pid, pfx in proxyCfg.protIdPrefixMap.items():
+			    self.log('addLines: file=< %s >,  protocTyp=< %s >' % (self.path(), pid))
+			    self.addLineForProtId( lines, pid )
+			for l in lines:
+			    f.write(l)
+
+
+	## helper method for console based files
+	## e.g. < export https_proxy="http://myusr:mypass@myhost:8080" >
+	## e.g. < export https_proxy="https://myusr:mypass@myhost:8080" >
+	## e.g. < HTTP_PROXY="http://myhost:8080" >
+	def envShLineGenFunc(self,  upperOn,  protId,  bashOn):
+		envVar = '%s_proxy' % (protId)
+		return '%s%s="%s://%s"' % (
+			'export ' if bashOn else '',
+			envVar.upper() if upperOn else envVar, 
+			proxyCfg.protIdPrefixMap[protId], 
+			proxyCfg.authSrvPortSuffix(True)
+		)
+
+
+	def setupShow(self):
+                with open(self.path(), 'r') as f:
+			lines = f.read()
+			for l in re.findall(r'\n(.*prox.*)', lines, re.I):
+				glog(l)  ## plain writing
+				print '%s' % l
+
+
+
+## proxy host, port etc. input UI form
+class UiMgr:
+
+    def log(self, msg): glog('UiMgr: %s' % msg)
+    def dbg(self, msg): gdbg('UiMgr: %s' % msg)
+    def err(self, msg): gerr('UiMgr: %s' % msg)
+
     def __init__(self):
 
         self.checkbox = gtk.CheckButton("Authentication?")
@@ -148,7 +506,7 @@ class Base:
         self.entry2 = gtk.Entry()
         self.entry3 = gtk.Entry()
         self.entry3.set_text("http")
-        #self.flog.write("httpsProtocol display default: < %s >\n" % (self.entry3.get_text()))
+        self.dbg("httpsProtocol display default: < %s >" % (self.entry3.get_text()))
         self.box2.pack_start(self.box4)
         self.box2.pack_start(self.box5)
 
@@ -191,58 +549,50 @@ class Base:
         self.button2.connect_object("clicked", gtk.Widget.destroy, self.window)
         self.window.connect("destroy", self.destroy)
 
+
+    def createProxyCfg(self):
+	global proxyCfg
+	proxyCfg = ProxyCfg( self.entry.get_text(),  self.entry2.get_text(),  
+		(self.uname if self.checkbox.get_active() else ''),  (self.passw if self.checkbox.get_active() else ''),  
+		self.entry3.get_text())
+	
+
+    def proxyActivate(self, widget, data=None):  
+	self.createProxyCfg()
+	mgr.proxyActivate()
+
+	
+    def proxyDeactivate(self, widget, data=None):
+	self.createProxyCfg()
+	mgr.proxyDeactivate()
+
+
     def destroy(self, widget, data=None):
-        if (self.flog != None):
-            self.flog.close()
+	mgr.destroy()
         gtk.main_quit()
         sys.exit(0)
+
 
     def act(self, widget, data=None):
         print data.get_text()
 
-    def fin(self):
-        self.host = self.entry.get_text()
-        self.port = self.entry2.get_text()
-        self.httpsProtocol = self.entry3.get_text()
-        self.flog.write("httpsProtocol finally: < %s >\n" % (self.httpsProtocol))
-        self.auth = self.checkbox.get_active()
-
-    def tog(self, widget, data=None):
-        if (widget.get_active()):
-            sub = Sub(self)
-
-    def proxyActivate(self, widget, data=None):
-        self.proxyFilesBackup([pathsEnv[0], pathsEnv[1], pathAptConf, pathJreProps])
-        self.flog.write("Files have been backed up in '~/.Ubuntu-Proxy/'  with .backup extension \n")
-        self.proxyDeactivate4Files( True )
-        self.fin()
-        self.proxyActivate4Files(     self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
-        self.proxyUpd4Gsettings( False, self.host, self.port,  (self.uname if self.auth else ""),  (self.passw if self.auth else "") )
-        self.mbx = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_INFO, gtk.BUTTONS_CLOSE,
-                                     "SUCCESSFULLY " + ("SET" if self.host != "" else "REMOVED"))
-        self.mbx.run()
-        self.mbx.destroy()
 
     def delete_event(self, widget, event, data=None):
         return False
 
-    def proxyDeactivate(self, widget, data=None):
-        self.proxyFilesBackup([pathsEnv[0], pathsEnv[1], pathAptConf])
-        self.flog.write("Files have been backed up in '~/.Ubuntu-Proxy/' with .backup extension \n")
-        self.proxyDeactivate4Files( False )
-        self.proxyUpd4Gsettings( True )
-        self.flog.write("Old Proxy-Settings removed \n")
-        self.mbx = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_INFO, gtk.BUTTONS_CLOSE,
-                                     "SUCCESSFULLY REMOVED")
-        self.mbx.run()
-        self.mbx.destroy()
+
+    def tog(self, widget, data=None):
+        if (widget.get_active()):
+            uiAuthForm = UiAuth(self)
+
 
     def opentext(self):
         try:
-            self.flog = open(logs, "a")
-            self.flog.write(str(datetime.now()) + "\n")
+            self.log('sudo test')
         except:
-            self.flog = None
+	    #self.err("opentext: error: %s" % sys.exc_info())  ## exception in logging should not use logging
+	    print('ERROR: logging timestamp:  %s' % sys.exc_info())
+            _log = None
             md = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_ERROR, gtk.BUTTONS_CLOSE,
                                    "You are not a Root user --Run This as 'sudo'")
             md.run()
@@ -250,192 +600,82 @@ class Base:
             sys.exit(0)
 
 
-    ## on "https" it may be "http" or "https" depending on your env
-    ## otherwise it returns <typ> as is
-    def protPrefix(self, typ):
-        return self.httpsProtocol if typ == "https" else typ
+    def finalDialog(self,msg):
+        self.mbx = gtk.MessageDialog(self.window, gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_INFO, gtk.BUTTONS_CLOSE, "%s (%s errors - see log for details)" % (msg,  errCnt))
+        self.mbx.run()
+        self.mbx.destroy()
 
 
-    def fileLinesAppend(self, path, proxyAuthSrvPortSuffix, lineGenFunc, srv, port, name, pasw ):
+## proxy auth infos (usrname + pass) UI input form
+class UiAuth:
+    def __init__(self, uiMgr):
+        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        self.window.set_title("Authorization")
+        self.vbox = gtk.VBox()
+        self.hbox0 = gtk.HBox()
+        self.hbox1 = gtk.HBox()
+        self.hbox2 = gtk.HBox()
+        self.label1 = gtk.Label("Username")
+        self.label2 = gtk.Label("Password")
+        self.entry1 = gtk.Entry()
+        self.entry2 = gtk.Entry()
+        self.entry2.set_visibility(False)
+        self.but1 = gtk.Button("Ok")
+        self.but2 = gtk.Button("Cancel")
 
-	logFileLinePattern = "proxyActivate4Files: file=< %s >,  protocTyp=< %s >" + (
-		",  proxyAuthSrvPortSuffix= < %s >,  httpsProtocol=< %s >  (emtpy name will be ignored => no auth)\n" 
-		% ( re.sub( r'^(.+:).*(@.+)$',  r'\1***\3',  proxyAuthSrvPortSuffix ),  self.httpsProtocol))
-        lines = []
-        fil = open(path, "a")
-	fil.write('\n')  # avoid appending on existing line
-        for protId in ("http", "ftp", "https"):
-            self.flog.write(logFileLinePattern % (path, protId))
-	    lineGenFunc( lines, path, protId, self.protPrefix(protId), proxyAuthSrvPortSuffix, srv, port, name, pasw  )
-        for l in lines:
-            fil.write(l)
-        fil.close()
+        self.hbox0.pack_start(self.label1)
+        self.hbox0.pack_start(self.entry1)
+        self.hbox1.pack_start(self.label2)
+        self.hbox1.pack_start(self.entry2)
+        self.hbox2.pack_start(self.but1)
+        self.hbox2.pack_start(self.but2)
 
+        self.vbox.pack_start(self.hbox0)
+        self.vbox.pack_start(self.hbox1)
+        self.vbox.pack_start(self.hbox2)
+        self.label1.show()
+        self.label2.show()
+        self.entry1.show()
+        self.entry2.show()
+        self.but1.show()
+        self.but2.show()
+        self.hbox0.show()
+        self.hbox1.show()
+        self.hbox2.show()
+        self.vbox.show()
+        self.window.add(self.vbox)
+        self.window.show()
+        self.but2.connect("clicked", self.cancel, uiMgr.checkbox)
+        self.but2.connect_object("clicked", gtk.Widget.destroy, self.window)
+        self.but1.connect("clicked", self.ok, uiMgr)
+        self.but1.connect_object("clicked", gtk.Widget.destroy, self.window)
 
-    def proxyActivate4Files(self, srv, port, name, pasw):
+    def ok(self, event, data=None):
+        data.uname = self.entry1.get_text()
+        data.passw = self.entry2.get_text()
 
-	proxyAuthSrvPortSuffix = "%s%s:%s" % ("" if name == "" else ("%s:%s@" % (name, pasw)),  srv, port)
+    def cancel(self, event, data=None):
+        data.set_active(False)
 
-
-        ## pathsEnv (/etc/bash.bashrc, /etc/environment)
-
-	## e.g. < export https_proxy="http://myusr:mypass@myhost:8080" >
-	## e.g. < export https_proxy="https://myusr:mypass@myhost:8080" >
-	## e.g. < HTTP_PROXY="http://myhost:8080" >
-	def pathEnvLineGenFunc(upperOn, protId, bashOn, protPrefix, proxyAuthSrvPortSuffix):
-		v = "%s_proxy" % (protId)
-		return "%s%s=\"%s://%s\"" % (
-			"export " if bashOn else "",
-			v.upper() if upperOn else v, 
-			protPrefix, 
-			proxyAuthSrvPortSuffix
-		)
-
-	def pathsEnvLineGenFuncLower(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw):
-		lines.append( pathEnvLineGenFunc(  False,  protId,  (path.find("bash") != -1),  protPrefix, proxyAuthSrvPortSuffix  ) + "\n")
-
-	def pathsEnvLineGenFuncUpper(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw):
-		lines.append( pathEnvLineGenFunc(  True,  protId,  (path.find("bash") != -1),  protPrefix, proxyAuthSrvPortSuffix  ) + "\n")
-
-	for upperC in (False, True):
-		self.fileLinesAppend( pathsEnv[0], proxyAuthSrvPortSuffix, pathsEnvLineGenFuncUpper if upperC else pathsEnvLineGenFuncLower, srv, port, name, pasw )
-		self.fileLinesAppend( pathsEnv[1], proxyAuthSrvPortSuffix, pathsEnvLineGenFuncUpper if upperC else pathsEnvLineGenFuncLower, srv, port, name, pasw )
-
-
-        ## pathAptConf (apt.conf)
-
-	## e.g. appending < Acquire::https::proxy "http://myusr:mypass@myhost:8080"; >
-	def pathAptConfLineGenFunc(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw ):
-            lines.append('Acquire::%s::proxy "%s://%s/";\n' % (protId, protPrefix, proxyAuthSrvPortSuffix))
-
-	self.fileLinesAppend( pathAptConf, proxyAuthSrvPortSuffix, pathAptConfLineGenFunc, srv, port, name, pasw )
-		
-
-        ## pathJreProps (net.properties)
-
-	## e.g. appending
-        ##   https.proxyHost=myhost
-	##   https.proxyPort=8080
-	##   java.net.useSystemProxies=true
-	if pathJrePropsUpdHostPortOn:
-		def pathJrePropsLineGenFunc(lines, path, protId, protPrefix, proxyAuthSrvPortSuffix, srv, port, name, pasw):
-        	    lines.append('%s.proxyHost=%s\n' % (protId, srv))
-	            lines.append('%s.proxyPort=%s\n' % (protId, port))
-		    #if protId == 'http':
-	            	#lines.append('java.net.useSystemProxies=true\n')  ## done in proxyDeactivate4Files
-
-		self.fileLinesAppend( pathJreProps, proxyAuthSrvPortSuffix, pathJrePropsLineGenFunc, srv, port, name, pasw  )
-		
-
-    def proxyFilesBackup(self, *files):
-        homefol = os.getenv('HOME')
-        folder = homefol + "/.Ubuntu-Proxy/"
-        try:
-    
-            os.mkdir(folder)
-        except:
-            pass
-
-        filstr = datetime.now().strftime('%Y%h%d_%H%M%S')
-        newfolder = folder + filstr + "/"
-        try:
-            os.mkdir(newfolder)
-        except:
-            pass
-
-        for fil in files:
-            try:
-                f1 = open(fil, "r")
-                l = f1.read()
-                f1.close()
-
-                if (fil.find(".") == -1):
-                    newname = fil[fil.rfind('/') + 1:] + ".backup"
+    def delete_event(self, widget, event, data=None):
+        return True
 
 
-                else:
-                    fil = fil[fil.rfind('/') + 1:]
-                    newname = fil[:fil.find(".")] + ".backup"
-                newname = newfolder + newname
-                f2 = open(newname, "w")
-                f2.write(l)
-                f2.close()
-            except:
-                pass
-
-
-    def proxyDeactivate4File(self, path, matchReplPairs): 
-		try:
-		    self.flog.write("proxyDeactivate4Files: file=< %s >,  matchReplPairs=< %s >\n" % (path, matchReplPairs))
-		    f = open(path, 'r')
-		    l = f.read()
-                    for mr in matchReplPairs:
-		    	if re.search(mr[0], l, flags=re.I):
-			    	l = re.sub(mr[0], mr[1], l, flags=re.I)
-		    f.close()
-		    f = open(path, 'w')
-		    f.write(l)
-		    f.close()
-		except:
-		    pass
-
-
-    def proxyDeactivate4Files(self, beforeActivateOn): 
-
-	self.flog.write('proxyDeactivate4Files: beforeActivateOn= %s\n' % (beforeActivateOn))
-
-	for pathEnv in pathsEnv:
-		self.proxyDeactivate4File(pathEnv, [[r'\n?(\s*(export)?\s+(https?|ftp)_proxy\s*=\s*".*")', r'']])
-
-	self.proxyDeactivate4File(pathAptConf, [[r'\n?(\s*Acquire::.+::proxy\s+"[^"]*"\s*;)', r'']])
-	
-	mrPairs = [[r'(\n?\s*java.net.useSystemProxies\s*=\s*)(true|false)(.*)',  r'\1true\3' if beforeActivateOn else r'\1false\3']]
-	if pathJrePropsUpdHostPortOn and beforeActivateOn:  ## => remove old http.proxyHost etc. entries
-		mrPairs.append([r'\n?(\s*(https?|ftp)\.proxy(Host|Port)\s*=.+)',  r''])
-	self.proxyDeactivate4File(pathJreProps, mrPairs)
-
-
-    def proxyUpd4Gsettings(self, deactivateOn, srv = "", port = 8080, name = "", pasw = ""):
-        self.flog.write("proxyUpd4Gsettings:  deactivateOn= %s,  protocTyp=< http for all >,  name:***@srv:port= < %s:***@%s:%s >  (emtpy name will be ignored => no auth)\n" % (deactivateOn, name, srv, port))
-
-        #prepare_gsettings()
-
-        uid = getpwnam( gsettingsUser )[2]
-        os.setgid( uid )
-        os.setuid( uid )
-        #def setuidfunc():
-        #    os.setgid(uid)
-        #    os.setuid(uid)
-        #os.system("gsettings set org.gnome.system.proxy.http enabled false")
-        #subprocess.check_output('/bin/bash -c "gsettings set org.gnome.system.proxy mode \'auto\'"', preexec_fn=setuidfunc)
-
-        if deactivateOn:
-                os.system("gsettings set org.gnome.system.proxy mode '%s'" % (gsettingsResetMode))
-                #os.system("gsettings set org.gnome.system.proxy.http enabled false")
-                #subprocess.check_output('/bin/bash -c "gsettings set org.gnome.system.proxy mode \'auto\'"', preexec_fn=setuidfunc)
-                return
-
-        os.system("gsettings set org.gnome.system.proxy mode 'manual'")
-        os.system("gsettings set org.gnome.system.proxy.http enabled true")
-        os.system("gsettings set org.gnome.system.proxy.http host '%s'" % (srv))
-        os.system("gsettings set org.gnome.system.proxy.http port '%s'" % (port))
-        os.system("gsettings set org.gnome.system.proxy.ftp host '%s'" % (srv))
-        os.system("gsettings set org.gnome.system.proxy.ftp port '%s'" % (port))
-        ## this seems not possible to apply:
-        #if self.httpsProtocol == "https":
-        #    os.system("gsettings set org.gnome.system.proxy.https host '%s'" % (srv))
-        #    os.system("gsettings set org.gnome.system.proxy.https port '%s'" % ())
-        if name != "":
-            os.system("gsettings set org.gnome.system.proxy.http authentication-user '%s'" % (name))
-            os.system("gsettings set org.gnome.system.proxy.http authentication-password '%s'" % (pasw))
-        else:
-            os.system("gsettings set org.gnome.system.proxy.http use-authentication false")
-
-
-      
 if __name__ == "__main__":
-    if not os.geteuid() == 0:
-        args = ['gksudo', sys.executable] + sys.argv + [os.environ]
-        os.execlpe('gksudo', *args)
-    base = Base()
-    gtk.main()
+	#mgr = Mgr().startUi()
+
+	mgr = Mgr()
+	if dbgOn: print ('DBG: ubproxy ui start')  ## debug
+	## TODO cmd line feature without GUI:
+	#print('usage: ubproxy  [-u usrname  -pw  -h <host>  -po <port>  [-protoPrefixes=<for-http,for-https,for-ftp>]]\n'
+		#+ '  no args: open Gnome GUI for setup')
+	if not os.geteuid() == 0:
+		global args
+		args = ['gksudo', sys.executable] + sys.argv + [os.environ]
+		os.execlpe('gksudo', *args)
+	if dbgOn: print ('DBG: after gksudo')  ## debug
+	global uiMgr
+	uiMgr = UiMgr()
+	gtk.main()
+	if dbgOn: print ('DBG: main finished')  ## debug
+	print ""  ## better readability
