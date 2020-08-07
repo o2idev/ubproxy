@@ -18,18 +18,28 @@
 
 If you are running some standard Ubuntu (e.g. with the Unity UI) then first have a look if configuring it via the [standard UI](https://www.serverlab.ca/tutorials/linux/administration-linux/how-to-configure-proxy-on-ubuntu-18-04/) already solves your problems.
 
-(Ongoing development of the former https://code.google.com/p/ubproxy/)
+(This version is an already heavily improved from the 2015 https://code.google.com/p/ubproxy/ version)
 
-An inevitable tool to configure proxy-settings in universities and office environment.
+An inevitable tool to configure proxy-settings in universities and office environments.
 Eliminates repetitive editing of system files prone to manual errors.
 
-(Gnome)GUI for updating various default Ubuntu proxy aware "places":
+(Gnome)GUI for updating various default Ubuntu proxy aware "places" all included as plugins:
 
-* `/etc/environment`
-* `/etc/bash.bashrc`
-* `/etc/apt/apt.conf`
-* `gsettings list-recursively org.gnome.system.proxy`
-* `/etc/alternatives/java` (it's `JAVA_HOME/lib/net.properties` // `java.net.useSystemProxies=...` property)
+* standard application / places (Plugin):
+	* `/etc/environment` ([PluginEtcEnv](plugins/PluginEtcEnv.py)
+		* `http_proxy=http://myproxy:8080`, `HTTPS_PROXY=...`, ... (upper and lowercase)
+	* Bash: `/etc/bash.bashrc` ([PluginBashRc](plugins/PluginBashRc.py)
+		* similar to above but with `export ` prefix
+	* Apt: `/etc/apt/apt.conf` ([PluginApt](plugins/PluginApt.py)
+		* `Acquire::http::proxy "http://myproxy:8080"` ...
+	* Gnome settings: `gsettings list-recursively org.gnome.system.proxy` ([PluginGsettings](plugins/PluginGsettings.py)
+	* Java Runtime Environment (default): `/etc/alternatives/java` ([PluginJavaAlt](plugins/PluginJavaAlt.py)
+		* it's `JAVA_HOME/lib/net.properties`, e.g. `java.net.useSystemProxies=...`, `http.proxyHost=...`, `https.proxyHost=...` properties
+* individual tools (not making use of the above settings, at least in certain environments or versions)
+	* Tomcat 8: `/etc/default/tomcat8` with `-Dhttp.proxyHost=myproxy -Dhttp.proxyPort=8080 ...` ([PluginTomcat8](plugins/PluginTomcat8.py)
+	* Hale Studio: `<hale-studio>/workspace/.metadata/.../....prefs` ([PluginHale](plugins/PluginHale.py)
+	* QGIS: `/home/user/.config/QGIS/QGIS2.conf` / `proxyHost=myproxy` ... ([PluginQgis](plugins/PluginQgis.py)
+	* maybe your application by easily adding some new plugin
 
 with this it covers all (4 first of the above) system places mentioned e.g. here:
 
@@ -44,9 +54,18 @@ with this it covers all (4 first of the above) system places mentioned e.g. here
 * `httpsProtocol`: default: `http` ; used for env var setup above ; maybe sometimes it must be `https`
 * `REMOVE` button: to reset proxy (remove entries ; `gsettings` `mode` to `'none'` ; `java.net.useSystemProxies` to `false`)
 
+## other features
+
+* backups dir: `~/.ubproxy.backups`
+* logfile: `/var/logs/ubproxy.log`
+* outputting relevant setup (lines) of each plugin after setup or removal of the proxy settings to stdout and the log file
+* many easily adjustable parameters on top of [ubproxy](blob/master/ubproxy) main file or some plugin files
+
 ## download and install
 
-* download as zip from [here](https://github.com/o2idev/ubproxy/archive/master.zip) to `/tmp`
+* download
+	* latest final release version 2.0.0.0001 as zip from [here](https://github.com/o2idev/ubproxy/archive/ubproxy-v2.0.0.0001.zip)
+	* or latest development version as zip from [here](https://github.com/o2idev/ubproxy/archive/master.zip) to `/tmp`
 * optional: move to `/opt` for availability after restarts (may be prefix `sudo ` if needed): `mv  /tmp/ubproxy*  /opt`
 
 ## desktop shortcut
@@ -58,11 +77,15 @@ create it similar to this (if moved to `/opt`): `ln -s  /opt/ubproxy  /home/user
 * some `dconf` related errors can be ignored (it seems related to calling `gsettings` with the `user` account instead of some sudo user):
 lines look like this: `(process:3261): dconf-CRITICAL **: unable to create directory '/root/.cache/dconf': Keine Berechtigung.  dconf will not work properly.`
 
+* by default all plugins are enabled although the may not be present or unique: this may lead to recoverable error messages
+	* one can disable such plugins by simply renaming them using a `_` prefix, e.g. `plugins/_PluginJavaAlt`
+* see also [issues](issues)
+
 ## test current proxy setup
 
 ### test setup
 
-to check in all the above "system places" you can execute `sh /opt/ubproxy-status.sh` (or wherever you installed it)
+to check in all the standard above "system places" you can execute `sh /opt/ubproxy-status.sh` (or wherever you installed it)
 the output could be similar to this:
 
 ```
@@ -215,7 +238,24 @@ Strict-Transport-Security=[max-age=31536000], Cache-Control=[max-age=31536000],
 X-Cache-Lookup=[MISS from proxy01:8080], Expires=[Fri, 30 Jul 2021 06:46:22 GMT], Content-Length=[162], 
 Age=[94138], Location=[https://duckduckgo.com/], Content-Type=[text/html]}
 ``` 
+
+### test directly: Tomcat or other Java application servers
+
+put [proxy-test.war](blob/master/proxy-test.war) containing a very simple [servlet](blob/master/java-appsrv-proxy-test-war/src/UrlTestServlet.java) in your `<tomcat>/webapps` folder and test the proxy functionality e.g. like this `http://localhost:8080/proxy-test/test?url=https://duckduckgo.com`
+
 ## release history
+
+### v3.0.0
+
+* plugin concept added and existing functionality moved to plugins
+* further plugins added: Tomcat8, Hale Studio, Qgis
+* backup dir now `~/.ubproxy.backups` (before `.Ubuntu-Proxy`)
+* logfile now `/var/logs/ubproxy.log` (before `/var/logs/proxychangerlogs`)
+* many easily adjustable parameters on top of [ubproxy](blob/master/ubproxy) main file or some plugin files
+* outputting relevant setup (lines) of each plugin after setup or removal of the proxy settings to stdout and the log file
+* backup functionality fixed
+* various refactorings and enhancements
+* code prepared for non-GUI usage and cmd line param functionality (code separation)
 
 ### v2.0.0
 
