@@ -4,6 +4,7 @@
 
 * [intro](#intro)
 * [GUI options](#gui-options)
+* [other features](#other-features)
 * [download and install](#download-and-install)
 * [desktop shortcut](#desktop-shortcut)
 * [known issues](known-issues)
@@ -12,6 +13,7 @@
   * [test directly: Terminal](#test-directly-terminal)
   * [test directly: Browser Firefox](#test-directly-browser-firefox)
   * [test directly: Java](#test-directly-java)
+  * [test directly: Tomcat or other Java application servers](test-directly-tomcat-or-other-java-application-servers)
 * [release history](#release-history)
   
 ## intro
