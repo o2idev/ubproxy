@@ -1,5 +1,21 @@
 # ubproxy
 
+## topics
+
+* [intro](#intro)
+* [GUI options](#gui-options)
+* [download and install](#download-and-install)
+* [desktop shortcut](#desktop-shortcut)
+* [known issues](known-issues)
+* [test current proxy setup](#test-current-proxy-setup)
+  * [test setup](#test-setup)
+  * [test directly: Terminal](#test-directly-terminal)
+  * [test directly: Browser Firefox](#test-directly-browser-firefox)
+  * [test directly: Java](#test-directly-java)
+* [release history](#release-history)
+  
+## intro
+
 If you are running some standard Ubuntu (e.g. with the Unity UI) then first have a look if configuring it via the [standard UI](https://www.serverlab.ca/tutorials/linux/administration-linux/how-to-configure-proxy-on-ubuntu-18-04/) already solves your problems.
 
 (Ongoing development of the former https://code.google.com/p/ubproxy/)
@@ -199,3 +215,15 @@ Strict-Transport-Security=[max-age=31536000], Cache-Control=[max-age=31536000],
 X-Cache-Lookup=[MISS from proxy01:8080], Expires=[Fri, 30 Jul 2021 06:46:22 GMT], Content-Length=[162], 
 Age=[94138], Location=[https://duckduckgo.com/], Content-Type=[text/html]}
 ``` 
+## release history
+
+### v2.0.0
+
+* `gsettings` support added
+* `httpsProtocol` GUI parameter
+* default JAVA/JRE support added
+* various fixes/refactorings
+
+### v1.0.0
+
+considering the google code from 2015 as v1.0.0
