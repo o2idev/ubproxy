@@ -34,6 +34,7 @@ Eliminates repetitive editing of system files prone to manual errors.
 		* similar to above but with `export ` prefix
 	* Shell Env (currently running): e.g. invoked via `/bin/bash` or `CTRL+T` (Terminal) ([PluginEnvThis](plugins/PluginEnvThis.py))
 		* similar to bash above
+		* does only report on the current settings but NOT change them! (may be a future enhancement)
 	* Apt: `/etc/apt/apt.conf` ([PluginApt](plugins/PluginApt.py))
 		* `Acquire::http::proxy "http://myproxy:8080"` ...
 	* Gnome settings: `gsettings list-recursively org.gnome.system.proxy` ([PluginGsettings](plugins/PluginGsettings.py))
