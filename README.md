@@ -49,7 +49,7 @@ with this it covers all (4 first of the above) system places mentioned e.g. here
 
 ## GUI options
 
-![Screenshot](https://github.com/o2idev/ubproxy/blob/master/2020-07-28%2Cscreenshot)
+![Screenshot](blob/master/2020-07-28%2Cscreenshot)
 
 * `host`: for all HTTP, HTTPS, FTP connections
 * `port`: for all the above
@@ -66,7 +66,7 @@ with this it covers all (4 first of the above) system places mentioned e.g. here
 ## download and install
 
 * download
-	* latest final release version 2.0.0.0001 as zip from [here](https://github.com/o2idev/ubproxy/archive/ubproxy-v2.0.0.0001.zip)
+	* latest final release version [v3.0.0 as zip or via git](releases/tag/ubproxy-v3.0.0)
 	* or latest development version as zip from [here](https://github.com/o2idev/ubproxy/archive/master.zip) to `/tmp`
 * optional: move to `/opt` for availability after restarts (may be prefix `sudo ` if needed): `mv  /tmp/ubproxy*  /opt`
 
