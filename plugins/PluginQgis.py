@@ -1,7 +1,8 @@
 class PluginQgis(PluginFile):
 
 	#confPath = '/home/user/.config/QGIS/QGIS2.conf'
-	confPath = subprocess.check_output(['/bin/bash', '-c', r'locate /home/*/.config/QGIS/QGIS2.conf | egrep -v "install"']).strip()
+	#confPath = subprocess.check_output(['/bin/bash', '-c', r'locate /home/*/.config/QGIS/QGIS2.conf | egrep -v "install"']).strip()
+	confPath = subprocess.check_output(['/bin/bash', '-c', r'locate /home/*/.local/share/QGIS/QGIS3/profiles/default/QGIS/QGIS3.ini | egrep -v "install"']).strip()
 
 	def name(self):  return 'qgis'
 	def path(self):  return self.confPath
