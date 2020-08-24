@@ -13,7 +13,7 @@ class PluginJavaAlt(PluginFile):
 		rules = [[r'(\n?\s*java.net.useSystemProxies\s*=\s*)(true|false)(.*)',  
 			r'\1true\3' if self.appUseSystemProxiesOn() else r'\1false\3']]
 		if self.appCleanProxyDetailsOn():
-			rules.append([r'\n?(\s*(https?|ftp)\.proxy(Host|Port)\s*=.+)',  r''])  ## => remove old http.proxyHost etc. entries
+			rules.append([r'\n?(\s*(https?|ftp)\.(proxy(Host|Port)|nonProxyHosts)\s*=.+)',  r''])  ## => remove old http.proxyHost etc. entries
 		return rules
 
 
@@ -26,5 +26,6 @@ class PluginJavaAlt(PluginFile):
 		if self.appSetupProxyDetailsOn():
 		    lines.append('%s.proxyHost=%s\n' % (protId, proxyCfg.srv))
 		    lines.append('%s.proxyPort=%s\n' % (protId, proxyCfg.port))
+		    lines.append('%s.nonProxyHosts=%s\n' % (protId,  re.sub( noProxyDefaultDelim, '|', proxyCfg.noProxy )))
 		    #if protId == 'http':
 		    	#lines.append('java.net.useSystemProxies=true\n')  ## done in substLineRules() above

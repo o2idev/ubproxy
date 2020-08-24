@@ -42,6 +42,10 @@ class PluginGsettings(Plugin):
 
 		os.system("gsettings set org.gnome.system.proxy.https host '%s'" % (pc.srv if enable else ''))
 		os.system("gsettings set org.gnome.system.proxy.https port '%s'" % (pc.port if enable else '0'))
+
+		os.system("gsettings set org.gnome.system.proxy ignore-hosts \"['%s']\"" % (
+			re.sub( noProxyDefaultDelim,  "',  '",  pc.noProxy ) if enable else ''))
+
 		if pc.usrname != "":
 		    os.system("gsettings set org.gnome.system.proxy.http authentication-user '%s'" % (pc.usrname if enable else ''))
 		    os.system("gsettings set org.gnome.system.proxy.http authentication-password '%s'" % (pc.usrpass if enable else ''))

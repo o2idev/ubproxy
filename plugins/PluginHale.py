@@ -16,6 +16,7 @@ class PluginHale(PluginFile):
 	## http.proxyPort=8080
 	def substLineRules(self):  # type: (bool)
 		return [  ## ('\1' backreference should not be followed by a digit ...)
-			[r'(\nhttp.proxyHost)=([^\n]*)', r'\1=' + (proxyCfg.srv  if enableProxyPhaseOn else '=')],
-			[r'(\nhttp.proxyPort)=([^\n]*)', r'\1=' + (proxyCfg.port if enableProxyPhaseOn else '=')]
+			[r'(\nhttp.nonProxyHosts)=([^\n]*)', r'\1=' + (proxyCfg.noProxy if enableProxyPhaseOn else '')],
+			[r'(\nhttp.proxyHost)=([^\n]*)', r'\1=' + (proxyCfg.srv  if enableProxyPhaseOn else '')],
+			[r'(\nhttp.proxyPort)=([^\n]*)', r'\1=' + (proxyCfg.port if enableProxyPhaseOn else '')]
 		]

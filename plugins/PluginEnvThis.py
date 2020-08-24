@@ -4,6 +4,9 @@ class PluginEnvThis(Plugin):
 
 	def apply(self):  # type(bool)
 		for upperOn in [False, True]:
+
+			## https?_proxy + uppercase version setup:
+
 			for pid, pfx in proxyCfg.protIdPrefixMap.items():
 				envVar = '%s_proxy' % pid
 				if upperOn:  envVar = envVar.upper()
@@ -11,6 +14,16 @@ class PluginEnvThis(Plugin):
 					os.environ[ envVar ] = proxyCfg.authSrvPortSuffix(True)
 				else:
 					if envVar in os.environ: del os.environ[ envVar ]
+
+			## no_proxy/NO_PROXY setup:
+
+			envVar = 'no_proxy'
+			if upperOn: envVar = envVar.upper()
+			if enableProxyPhaseOn:
+				os.environ[ envVar ] = proxyCfg.noProxy
+			else:
+				if envVar in os.environ: del os.environ[ envVar ]
+				
 
 
 	def setupShow(self):

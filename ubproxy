@@ -82,6 +82,10 @@ pluginsPathGlob = '%s/plugins/P*' % os.path.dirname(os.path.realpath(__file__))
 pluginsUseMatch = '.*'  ## recommended: use all and let those report problems that e.g. do not find an installed plugin-specific app
 #pluginsUseMatch='Plugin(EtcEnv|BashRc|AptConf)'  ## e.g. to only use those
 
+noProxyDefaultDelim= ',  '
+noProxyDelimMatch= '[\s,;|]+'
+noProxyDefault= 'localhost%s127.0.0.1' % noProxyDefaultDelim
+
 backupsDir = '%s/.ubproxy-backups/' % os.getenv('HOME')
 logs = "/var/log/ubproxy.log"
 
@@ -115,6 +119,7 @@ class ProxyCfg:
 	port = 8080   # type: int
 	usrname = ""  # type: str
 	usrpass = ""  # type: str
+	noProxy = ''  # type: str
 
 	## default: each protocol uses the "http" protocol prefix for URL-based proxy reference, e.g. "http://myproxy:8080"
 	protIdPrefixMap = { "http": "http",  "ftp": "http",  "https": "http" }
@@ -124,19 +129,28 @@ class ProxyCfg:
 			"" if self.usrname == "" else ("%s:%s@" % (self.ursname, self.usrpass if showPassOn else '***')),
 			self.srv, self.port)
 
-	def __init__(  self,  srv,  port,  usrname,  usrpass,  httpsProtocol  ):  # type: (str, int, str, str, str)
+	## noProxy:
+	##   removes/substitutes undesired separators etc. from cfg
+	##   by default returns comma-separated list with two spaces after comma
+	##   e.g.: "localhost,  127.0.0.1"
+	def __init__(  self,  srv,  port,  usrname,  usrpass,  httpsProtocol, noProxy  ):  # type: (str, int, str, str, str, str)
 		self.srv = srv
 		self.port = port
 		self.usrname = usrname
 		self.usrpass = usrpass
 		self.protIdPrefixMap["https"] = httpsProtocol
+		if dbgOn: self.dbg('noProxy: %s' % noProxy)
+		self.noProxy = re.sub(  noProxyDelimMatch,  noProxyDefaultDelim,  noProxy  )
 		self.log('proxy cfg prepared: %s' % (self))
 
-	def __str__(self): return 'authSrvPortSuffix=< %s >,  protoMap= %s' % (self.authSrvPortSuffix(), self.protIdPrefixMap)
+	def __str__(self): return 'authSrvPortSuffix=< %s >,  noProxy=< %s >,  protoMap= %s' % (self.authSrvPortSuffix(),  self.noProxy,  self.protIdPrefixMap)
 
 	def log(self, msg): glog('ProxyCfg: %s' % (msg))
 	def dbg(self, msg): gdbg('ProxyCfg: %s' % (msg))
 	def err(self, msg): gerr('ProxyCfg: %s' % (msg))
+
+	def noProxyAsList(self):
+		return self.noProxy.split(noProxyDefaultDelim)
 
 
 ## UI independent business logic
@@ -227,6 +241,7 @@ class Mgr:
 
     def appsDetails(self):
 	return 'appsUseSystemProxiesOn= %s,  appsSetupProxyDetailsOn= %s,  appsCleanProxyDetailsOn= %s' % (self.appsUseSystemProxiesOn(), self.appsSetupProxyDetailsOn(), self.appsCleanProxyDetailsOn() )
+
 
     def pluginDetails(self, plug): 
 	return '%s: plugin= %s,  appUseSystemProxiesOn= %s,  appSetupProxyDetailsOn= %s,  appsCleanProxyDetailsOn= %s' % (
@@ -376,7 +391,6 @@ class Plugin:
 	def __init__(self):  # type(ProxyCfg)
 		self.load()
 
-
 	def log(self, msg): glog('plugin %s: %s' % (self.name(), msg))
 	def dbg(self, msg): gdbg('plugin %s: %s' % (self.name(), msg))
 	def err(self, msg): gerr('plugin %s: %s' % (self.name(), msg))
@@ -485,6 +499,7 @@ class UiMgr:
         self.box3 = gtk.HBox()
         self.box4 = gtk.HBox()
         self.box5 = gtk.HBox()
+        self.box6 = gtk.HBox()
 
         self.entry = gtk.Entry()
         self.box0.pack_start(self.box2)
@@ -499,20 +514,25 @@ class UiMgr:
 
         self.label1 = gtk.Label("Host")
         self.label2 = gtk.Label("Port")
-        self.label3 = gtk.Label("httpsProtocol")
+        self.label3 = gtk.Label("HTTPS protocol prefix")
+        self.label4 = gtk.Label("Ignore for hosts (' ,;|'-separators valid, '*.'-support)")
 
         self.button1.show()
         self.button2.show()
         self.entry2 = gtk.Entry()
         self.entry3 = gtk.Entry()
         self.entry3.set_text("http")
+        self.entry4 = gtk.Entry()
+        self.entry4.set_text("localhost, 127.0.0.1")
         self.dbg("httpsProtocol display default: < %s >" % (self.entry3.get_text()))
         self.box2.pack_start(self.box4)
         self.box2.pack_start(self.box5)
+        self.box2.pack_start(self.box6)
 
         self.entry.connect("activate", self.act, self.entry)
         self.entry2.connect("activate", self.act, self.entry2)
         self.entry3.connect("activate", self.act, self.entry3)
+        self.entry4.connect("activate", self.act, self.entry4)
 
         self.checkbox.connect("toggled", self.tog, None)
 
@@ -522,20 +542,25 @@ class UiMgr:
         self.box4.pack_start(self.entry2)
         self.box5.pack_start(self.label3)
         self.box5.pack_start(self.entry3)
+        self.box6.pack_start(self.label4)
+        self.box6.pack_start(self.entry4)
 
         self.entry2.show()
         self.entry3.show()
+        self.entry4.show()
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         self.window.add(self.box0)
         self.label1.show()
         self.label2.show()
         self.label3.show()
+        self.label4.show()
         self.box2.show()
         self.box1.show()
         self.box0.show()
         self.box3.show()
         self.box4.show()
         self.box5.show()
+        self.box6.show()
         self.checkbox.show()
         #
         # before show--
@@ -554,8 +579,8 @@ class UiMgr:
 	global proxyCfg
 	proxyCfg = ProxyCfg( self.entry.get_text(),  self.entry2.get_text(),  
 		(self.uname if self.checkbox.get_active() else ''),  (self.passw if self.checkbox.get_active() else ''),  
-		self.entry3.get_text())
-	
+		self.entry3.get_text(),  self.entry4.get_text())
+
 
     def proxyActivate(self, widget, data=None):  
 	self.createProxyCfg()

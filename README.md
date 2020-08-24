@@ -39,6 +39,7 @@ Eliminates repetitive editing of system files prone to manual errors.
 	* Tomcat 8: `/etc/default/tomcat8` with `-Dhttp.proxyHost=myproxy -Dhttp.proxyPort=8080 ...` ([PluginTomcat8](plugins/PluginTomcat8.py)
 	* Hale Studio: `<hale-studio>/workspace/.metadata/.../....prefs` ([PluginHale](plugins/PluginHale.py)
 	* QGIS: `/home/user/.config/QGIS/QGIS2.conf` / `proxyHost=myproxy` ... ([PluginQgis](plugins/PluginQgis.py)
+	* TOS (Talend Open Studio): TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs ... ([PluginTOS](plugins/PluginTOS.py)
 	* maybe your application by easily adding some new plugin
 
 with this it covers all (4 first of the above) system places mentioned e.g. here:
@@ -244,6 +245,11 @@ Age=[94138], Location=[https://duckduckgo.com/], Content-Type=[text/html]}
 put [proxy-test.war](blob/master/proxy-test.war) containing a very simple [servlet](blob/master/java-appsrv-proxy-test-war/src/UrlTestServlet.java) in your `<tomcat>/webapps` folder and test the proxy functionality e.g. like this `http://localhost:8080/proxy-test/test?url=https://duckduckgo.com`
 
 ## release history
+
+### v3.1.0
+
+* support/plugin for TOS (Talend Open Studio)
+* support for non-proxy hosts for all plugins
 
 ### v3.0.0
 

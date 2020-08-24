@@ -13,4 +13,4 @@ class PluginTomcat8(PluginFile):
 	## JAVA_OPTS="${JAVA_OPTS} -Dhttps.proxyHost=myproxy -Dhttps.proxyPort=8080 -Dhttps.nonProxyHosts=\"localhost|127.0.0.1\""
 	def addLineForProtId(self, lines, protId):
 
-		lines.append('\nJAVA_OPTS="${JAVA_OPTS}  -D%s.proxyHost=%s  -D%s.proxyPort=%s"' % (protId,  proxyCfg.srv,  protId,  proxyCfg.port))
+		lines.append('\nJAVA_OPTS="${JAVA_OPTS} -D%s.proxyHost=%s -D%s.proxyPort=%s -D%s.nonProxyHosts=\\"%s\\""' % (protId,  proxyCfg.srv,  protId,  proxyCfg.port,  protId,  re.sub( noProxyDefaultDelim, '|', proxyCfg.noProxy )))
