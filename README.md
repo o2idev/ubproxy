@@ -4,6 +4,7 @@
 
 * [intro](#intro)
 * [GUI options](#gui-options)
+* [other features](#other-features)
 * [download and install](#download-and-install)
 * [desktop shortcut](#desktop-shortcut)
 * [known issues](known-issues)
@@ -12,6 +13,7 @@
   * [test directly: Terminal](#test-directly-terminal)
   * [test directly: Browser Firefox](#test-directly-browser-firefox)
   * [test directly: Java](#test-directly-java)
+  * [test directly: Tomcat or other Java application servers](test-directly-tomcat-or-other-java-application-servers)
 * [release history](#release-history)
   
 ## intro
@@ -26,20 +28,23 @@ Eliminates repetitive editing of system files prone to manual errors.
 (Gnome)GUI for updating various default Ubuntu proxy aware "places" all included as plugins:
 
 * standard application / places (Plugin):
-	* `/etc/environment` ([PluginEtcEnv](plugins/PluginEtcEnv.py)
+	* `/etc/environment` standard ([PluginEtcEnv](plugins/PluginEtcEnv.py))
 		* `http_proxy=http://myproxy:8080`, `HTTPS_PROXY=...`, ... (upper and lowercase)
-	* Bash: `/etc/bash.bashrc` ([PluginBashRc](plugins/PluginBashRc.py)
+	* Bash standard: `/etc/bash.bashrc` ([PluginBashRc](plugins/PluginBashRc.py))
 		* similar to above but with `export ` prefix
-	* Apt: `/etc/apt/apt.conf` ([PluginApt](plugins/PluginApt.py)
+	* Shell Env (currently running): e.g. invoked via `/bin/bash` or `CTRL+T` (Terminal) ([PluginEnvThis](plugins/PluginEnvThis.py))
+		* similar to bash above
+		* does only report on the current settings but NOT change them! (may be a future enhancement)
+	* Apt: `/etc/apt/apt.conf` ([PluginApt](plugins/PluginApt.py))
 		* `Acquire::http::proxy "http://myproxy:8080"` ...
-	* Gnome settings: `gsettings list-recursively org.gnome.system.proxy` ([PluginGsettings](plugins/PluginGsettings.py)
-	* Java Runtime Environment (default): `/etc/alternatives/java` ([PluginJavaAlt](plugins/PluginJavaAlt.py)
+	* Gnome settings: `gsettings list-recursively org.gnome.system.proxy` ([PluginGsettings](plugins/PluginGsettings.py))
+	* Java Runtime Environment (default): `/etc/alternatives/java` ([PluginJavaAlt](plugins/PluginJavaAlt.py))
 		* it's `JAVA_HOME/lib/net.properties`, e.g. `java.net.useSystemProxies=...`, `http.proxyHost=...`, `https.proxyHost=...` properties
 * individual tools (not making use of the above settings, at least in certain environments or versions)
-	* Tomcat 8: `/etc/default/tomcat8` with `-Dhttp.proxyHost=myproxy -Dhttp.proxyPort=8080 ...` ([PluginTomcat8](plugins/PluginTomcat8.py)
-	* Hale Studio: `<hale-studio>/workspace/.metadata/.../....prefs` ([PluginHale](plugins/PluginHale.py)
-	* QGIS: `/home/user/.config/QGIS/QGIS2.conf` / `proxyHost=myproxy` ... ([PluginQgis](plugins/PluginQgis.py)
-	* TOS (Talend Open Studio): TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs ... ([PluginTOS](plugins/PluginTOS.py)
+	* Tomcat 8: `/etc/default/tomcat8` with `-Dhttp.proxyHost=myproxy -Dhttp.proxyPort=8080 ...` ([PluginTomcat8](plugins/PluginTomcat8.py))
+	* Hale Studio: `<hale-studio>/workspace/.metadata/.../....prefs` ([PluginHale](plugins/PluginHale.py))
+	* QGIS: `/home/user/.config/QGIS/QGIS2.conf` / `proxyHost=myproxy` ... ([PluginQgis](plugins/PluginQgis.py))
+	* TOS (Talend Open Studio): TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs ... ([PluginTOS](plugins/PluginTOS.py))
 	* maybe your application by easily adding some new plugin
 
 with this it covers all (4 first of the above) system places mentioned e.g. here:
@@ -48,7 +53,7 @@ with this it covers all (4 first of the above) system places mentioned e.g. here
 
 ## GUI options
 
-![Screenshot](https://github.com/o2idev/ubproxy/blob/master/2020-07-28%2Cscreenshot)
+![Screenshot](screenshot.png)
 
 * `host`: for all HTTP, HTTPS, FTP connections
 * `port`: for all the above
@@ -65,7 +70,8 @@ with this it covers all (4 first of the above) system places mentioned e.g. here
 ## download and install
 
 * download
-	* latest final release version 2.0.0.0001 as zip from [here](https://github.com/o2idev/ubproxy/archive/ubproxy-v2.0.0.0001.zip)
+	* latest final release version [v3.0.0 as zip or tar.gz](https://github.com/o2idev/ubproxy/releases/tag/ubproxy-v3.0.0)
+	   * or [from here via git](https://github.com/o2idev/ubproxy): `git clone https://github.com/o2idev/ubproxy`
 	* or latest development version as zip from [here](https://github.com/o2idev/ubproxy/archive/master.zip) to `/tmp`
 * optional: move to `/opt` for availability after restarts (may be prefix `sudo ` if needed): `mv  /tmp/ubproxy*  /opt`
 
@@ -75,6 +81,7 @@ create it similar to this (if moved to `/opt`): `ln -s  /opt/ubproxy  /home/user
 
 ## known issues
 
+* authentication support is not implemented for all plugins
 * some `dconf` related errors can be ignored (it seems related to calling `gsettings` with the `user` account instead of some sudo user):
 lines look like this: `(process:3261): dconf-CRITICAL **: unable to create directory '/root/.cache/dconf': Keine Berechtigung.  dconf will not work properly.`
 
@@ -86,7 +93,10 @@ lines look like this: `(process:3261): dconf-CRITICAL **: unable to create direc
 
 ### test setup
 
-to check in all the standard above "system places" you can execute `sh /opt/ubproxy-status.sh` (or wherever you installed it)
+**hint:** if you change the proxy settings via **`ubproxy` (which is based on python)**, it will display the same data via stdout and in the logs **for all plugins**.
+In a future version this could be available without touching the proxy settings and thus replacing/extending the functionality of the **`ubproxy-status.sh` (which is based on shell)** below.
+
+to check in **all the 6 "standard" above "system places"** you can execute `sh /opt/ubproxy-status.sh` (or wherever you installed it)
 the output could be similar to this:
 
 ```

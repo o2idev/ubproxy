@@ -151,6 +151,9 @@ class ProxyCfg:
 
 	def noProxyAsList(self):
 		return self.noProxy.split(noProxyDefaultDelim)
+		
+	def noProxyAsDelimStr(self, delim):
+		return re.sub( noProxyDefaultDelim, delim, self.noProxy )
 
 
 ## UI independent business logic
@@ -520,6 +523,7 @@ class UiMgr:
         self.button1.show()
         self.button2.show()
         self.entry2 = gtk.Entry()
+        self.entry2.set_text("8080")
         self.entry3 = gtk.Entry()
         self.entry3.set_text("http")
         self.entry4 = gtk.Entry()

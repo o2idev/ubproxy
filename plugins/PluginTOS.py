@@ -38,4 +38,4 @@ class PluginTOS(PluginFile):  ## Talend Open Studio
 			lines.append('\nproxyData/%s/host=%s' % (protId.upper(), proxyCfg.srv))
 			lines.append('\nproxyData/%s/port=%s' % (protId.upper(), proxyCfg.port))
 		if protId == 'http':
-			lines.append('\nnonProxiedHosts=%s' % re.sub( noProxyDefaultDelim, '|', proxyCfg.noProxy ))
+			lines.append('\nnonProxiedHosts=%s' % proxyCfg.noProxyAsDelimStr('|'))

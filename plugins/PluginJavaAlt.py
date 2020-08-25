@@ -26,6 +26,6 @@ class PluginJavaAlt(PluginFile):
 		if self.appSetupProxyDetailsOn():
 		    lines.append('%s.proxyHost=%s\n' % (protId, proxyCfg.srv))
 		    lines.append('%s.proxyPort=%s\n' % (protId, proxyCfg.port))
-		    lines.append('%s.nonProxyHosts=%s\n' % (protId,  re.sub( noProxyDefaultDelim, '|', proxyCfg.noProxy )))
+		    lines.append('%s.nonProxyHosts=%s\n' % (protId,  proxyCfg.noProxyAsDelimStr('|') ))
 		    #if protId == 'http':
 		    	#lines.append('java.net.useSystemProxies=true\n')  ## done in substLineRules() above
