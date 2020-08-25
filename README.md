@@ -44,7 +44,7 @@ Eliminates repetitive editing of system files prone to manual errors.
 	* Tomcat 8: `/etc/default/tomcat8` with `-Dhttp.proxyHost=myproxy -Dhttp.proxyPort=8080 ...` ([PluginTomcat8](plugins/PluginTomcat8.py))
 	* Hale Studio: `<hale-studio>/workspace/.metadata/.../....prefs` ([PluginHale](plugins/PluginHale.py))
 	* QGIS: `/home/user/.config/QGIS/QGIS2.conf` / `proxyHost=myproxy` ... ([PluginQgis](plugins/PluginQgis.py))
-	* TOS (Talend Open Studio): TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs ... ([PluginTOS](plugins/PluginTOS.py))
+	* TOS (Talend Open Studio): `TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs` ... ([PluginTOS](plugins/PluginTOS.py))
 	* maybe your application by easily adding some new plugin
 
 with this it covers all (4 first of the above) system places mentioned e.g. here:
