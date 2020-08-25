@@ -86,7 +86,7 @@ create it similar to this (if moved to `/opt`): `ln -s  /opt/ubproxy  /home/user
 lines look like this: `(process:3261): dconf-CRITICAL **: unable to create directory '/root/.cache/dconf': Keine Berechtigung.  dconf will not work properly.`
 
 * by default all plugins are enabled although the plugins application (e.g. Tomcat) may not be present or unique: this may lead to recoverable error messages
-	* one can disable such plugins by simply renaming them using a `_` prefix, e.g. `plugins/_PluginJavaAlt`
+	* one can disable such plugins by simply renaming them using a `_` prefix, e.g. `plugins/_PluginJavaAlt.py`
 * see also [issues](issues)
 
 ## test current proxy setup
