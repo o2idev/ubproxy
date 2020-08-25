@@ -70,7 +70,7 @@ with this it covers all (4 first of the above) system places mentioned e.g. here
 ## download and install
 
 * download
-	* latest final release version [v3.0.0 as zip or tar.gz](https://github.com/o2idev/ubproxy/releases/tag/ubproxy-v3.0.0)
+	* latest final release version [zip or tar.gz](https://github.com/o2idev/ubproxy/releases/latest)
 	   * or [from here via git](https://github.com/o2idev/ubproxy): `git clone https://github.com/o2idev/ubproxy`
 	* or latest development version as zip from [here](https://github.com/o2idev/ubproxy/archive/master.zip) to `/tmp`
 * optional: move to `/opt` for availability after restarts (may be prefix `sudo ` if needed): `mv  /tmp/ubproxy*  /opt`
