@@ -7,13 +7,13 @@
 * [other features](#other-features)
 * [download and install](#download-and-install)
 * [desktop shortcut](#desktop-shortcut)
-* [known issues](known-issues)
+* [known issues](#known-issues)
 * [test current proxy setup](#test-current-proxy-setup)
   * [test setup](#test-setup)
   * [test directly: Terminal](#test-directly-terminal)
   * [test directly: Browser Firefox](#test-directly-browser-firefox)
   * [test directly: Java](#test-directly-java)
-  * [test directly: Tomcat or other Java application servers](test-directly-tomcat-or-other-java-application-servers)
+  * [test directly: Tomcat or other Java application servers](#test-directly-tomcat-or-other-java-application-servers)
 * [release history](#release-history)
   
 ## intro
@@ -44,7 +44,7 @@ Eliminates repetitive editing of system files prone to manual errors.
 	* Tomcat 8: `/etc/default/tomcat8` with `-Dhttp.proxyHost=myproxy -Dhttp.proxyPort=8080 ...` ([PluginTomcat8](plugins/PluginTomcat8.py))
 	* Hale Studio: `<hale-studio>/workspace/.metadata/.../....prefs` ([PluginHale](plugins/PluginHale.py))
 	* QGIS: `/home/user/.config/QGIS/QGIS2.conf` / `proxyHost=myproxy` ... ([PluginQgis](plugins/PluginQgis.py))
-	* TOS (Talend Open Studio): TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs ... ([PluginTOS](plugins/PluginTOS.py))
+	* TOS (Talend Open Studio): `TOS_DI*/configuration/.settings/org.eclipse.core.net.prefs` ... ([PluginTOS](plugins/PluginTOS.py))
 	* maybe your application by easily adding some new plugin
 
 with this it covers all (4 first of the above) system places mentioned e.g. here:
@@ -85,8 +85,8 @@ create it similar to this (if moved to `/opt`): `ln -s  /opt/ubproxy  /home/user
 * some `dconf` related errors can be ignored (it seems related to calling `gsettings` with the `user` account instead of some sudo user):
 lines look like this: `(process:3261): dconf-CRITICAL **: unable to create directory '/root/.cache/dconf': Keine Berechtigung.  dconf will not work properly.`
 
-* by default all plugins are enabled although the may not be present or unique: this may lead to recoverable error messages
-	* one can disable such plugins by simply renaming them using a `_` prefix, e.g. `plugins/_PluginJavaAlt`
+* by default all plugins are enabled although the plugins application (e.g. Tomcat) may not be present or unique: this may lead to recoverable error messages
+	* one can disable such plugins by simply renaming them using a `_` prefix, e.g. `plugins/_PluginJavaAlt.py`
 * see also [issues](issues)
 
 ## test current proxy setup
