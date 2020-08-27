@@ -29,7 +29,7 @@ class PluginEnvThis(Plugin):
 	def setupShow(self):
 		for k in os.environ:
 			if re.match( '.*proxy.*', k, re.I ):
-				s = '%s = %s' % (k, os.environ[ k ])
+				s = '%s=%s' % (k, os.environ[ k ])
 				self.log(s)
 				print s
 		

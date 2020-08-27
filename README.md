@@ -256,6 +256,10 @@ put [proxy-test.war](blob/master/proxy-test.war) containing a very simple [servl
 
 ## release history
 
+### v3.1.1
+
+* fix for PluginBashRc and PluginEnvThis (env cmd spaces removed: `http_proxy = "..."` etc. to `http_proxy="..."`)
+
 ### v3.1.0
 
 * support/plugin for TOS (Talend Open Studio)
